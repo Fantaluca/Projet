@@ -117,19 +117,19 @@ void boundary_condition(int n,
         double f = 1. / 20.;
         SET(eta, nx / 2, ny / 2, A * sin(2 * M_PI * f * t));
 
-        // Appliquer des conditions aux limites ouvertes pour eta, u, et v sur tous les bords
+        // Apply boundary condition on (eta, u, v) for each corners of the domain
         for(int i = 0; i < nx; i++) {
             double h_bottom = GET(h_interp, i, 0);
             double h_top = GET(h_interp, i, ny-1);
             double c_bottom = sqrt(param.g * h_bottom);
             double c_top = sqrt(param.g * h_top);
 
-            // Bord inférieur
+            // Bottom corner
             SET(eta, i, 0, GET(eta, i, 1) - (c_bottom * param.dt / param.dy) * (GET(eta, i, 1) - GET(eta, i, 0)));
             SET(u, i, 0, GET(u, i, 1) - (c_bottom * param.dt / param.dy) * (GET(u, i, 1) - GET(u, i, 0)));
             SET(v, i, 0, GET(v, i, 1) - (c_bottom * param.dt / param.dy) * (GET(v, i, 1) - GET(v, i, 0)));
 
-            // Bord supérieur
+            // Top corner
             SET(eta, i, ny-1, GET(eta, i, ny-2) - (c_top * param.dt / param.dy) * (GET(eta, i, ny-1) - GET(eta, i, ny-2)));
             SET(u, i, ny-1, GET(u, i, ny-2) - (c_top * param.dt / param.dy) * (GET(u, i, ny-1) - GET(u, i, ny-2)));
             SET(v, i, ny-1, GET(v, i, ny-2) - (c_top * param.dt / param.dy) * (GET(v, i, ny-1) - GET(v, i, ny-2)));
@@ -141,12 +141,12 @@ void boundary_condition(int n,
             double c_left = sqrt(param.g * h_left);
             double c_right = sqrt(param.g * h_right);
 
-            // Bord gauche
+            // Left corner
             SET(eta, 0, j, GET(eta, 1, j) - (c_left * param.dt / param.dx) * (GET(eta, 1, j) - GET(eta, 0, j)));
             SET(u, 0, j, GET(u, 1, j) - (c_left * param.dt / param.dx) * (GET(u, 1, j) - GET(u, 0, j)));
             SET(v, 0, j, GET(v, 1, j) - (c_left * param.dt / param.dx) * (GET(v, 1, j) - GET(v, 0, j)));
 
-            // Bord droit
+            // Right corner
             SET(eta, nx-1, j, GET(eta, nx-2, j) - (c_right * param.dt / param.dx) * (GET(eta, nx-1, j) - GET(eta, nx-2, j)));
             SET(u, nx-1, j, GET(u, nx-2, j) - (c_right * param.dt / param.dx) * (GET(u, nx-1, j) - GET(u, nx-2, j)));
             SET(v, nx-1, j, GET(v, nx-2, j) - (c_right * param.dt / param.dx) * (GET(v, nx-1, j) - GET(v, nx-2, j)));
