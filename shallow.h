@@ -65,17 +65,51 @@ double interpolate_data(const struct data *data,
                         double x, 
                         double y);
 
+void interp_bathy(int nx,
+                  int ny, 
+                  const struct parameters param,
+                  struct data *h_interp, 
+                  struct data *h);
+
 
 // From "tools.c"
-int write_data_vtk_temp(const struct data *data, const char *name,
-                   const char *filename, int step);
-int read_parameters(struct parameters *param, const char *filename);
+int read_parameters(struct parameters *param,
+                    const char *filename);
+
+
+
 void print_parameters(const struct parameters *param);
-int read_data(struct data *data, const char *filename);
-int write_data(const struct data *data, const char *filename, int step);
-int write_data_vtk(const struct data *data, const char *name, const char *filename, int step);
-int write_manifest_vtk(const char *filename, double dt, int nt, int sampling_rate);
-int init_data(struct data *data, int nx, int ny, double dx, double dy, double val);
+
+
+int read_data(struct data *data, 
+              const char *filename);
+
+
+int write_data(const struct data *data, 
+               const char *filename, 
+               int step);
+
+
+int write_data_vtk(const struct data *data, 
+                   const char *name, 
+                   const char *filename,
+                   int step);
+
+
+int write_manifest_vtk(const char *filename,
+                       double dt, 
+                       int nt, 
+                       int sampling_rate);
+
+
+int init_data(struct data *data, 
+              int nx, 
+              int ny, 
+              double dx, 
+              double dy, 
+              double val);
+
+
 void free_data(struct data *data);
 
 #endif // SHALLOW_H
