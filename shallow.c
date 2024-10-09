@@ -14,6 +14,8 @@ double interpolate_data(const struct data *data,
   if(j < 0) j = 0;
   else if(j > data->ny - 1) j = data->ny - 1;
 
+  int a = 1;
+
   double val = GET(data, i, j);
   return val;
 }
