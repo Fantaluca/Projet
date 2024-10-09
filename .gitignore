@@ -1,0 +1,6 @@
+# Ignorer tous les fichiers .vti
+*.vti
+
+# Ignorer tous les fichiers .vtk
+*.vtk
+
