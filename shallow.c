@@ -1,4 +1,4 @@
-#include "tools.c"
+#include "shallow.h"
 
 
 double interpolate_data(const struct data *data, 
@@ -14,8 +14,6 @@ double interpolate_data(const struct data *data,
   if(j < 0) j = 0;
   else if(j > data->ny - 1) j = data->ny - 1;
 
-  int a = 1;
-
   double val = GET(data, i, j);
   return val;
 }
@@ -29,17 +27,20 @@ double update_eta(int nx,
                   struct data *eta, 
                   struct data *h_interp)
 {
-  for(int i = 0; i < nx; i++) {
-    for(int j = 0; j < ny ; j++) {
-      // TODO: this does not evaluate h at the correct locations
-      double h_ij = GET(h_interp, i, j);
-      double c1 = param.dt * h_ij;
-      double eta_ij = GET(eta, i, j)
-        - c1 / param.dx * (GET(u, i + 1, j) - GET(u, i, j))
-        - c1 / param.dy * (GET(v, i, j + 1) - GET(v, i, j));
-      SET(eta, i, j, eta_ij);
+     for(int i = 0; i < nx; i++) {
+      for(int j = 0; j < ny ; j++) {
+        // TODO: this does not evaluate h at the correct locations
+        double h_ij = GET(h_interp, i, j);
+        double c1 = param.dt * h_ij;
+        double eta_ij = GET(eta, i, j)
+          - c1 / param.dx * (GET(u, i + 1, j) - GET(u, i, j))
+          - c1 / param.dy * (GET(v, i, j + 1) - GET(v, i, j));
+        SET(eta, i, j, eta_ij);
+        // /if (eta_ij != 0.) printf("eta_ij : %lf", eta_ij);
+        //double eta_val =  ((eta)->values[(eta)->nx * (j) + (i)]); 
+        //if (eta_val != 0.) (printf("eta_val (after update) : %lf \n",eta_val));
+      }
     }
-  }
 }
 
 double update_velocities(int nx, 
@@ -64,7 +65,6 @@ double update_velocities(int nx,
       SET(v, i, j, v_ij);
     }
   }
-
 }
 
 
@@ -103,8 +103,8 @@ int main(int argc, char **argv)
   // interpolate bathymetry
   struct data h_interp;
   init_data(&h_interp, nx, ny, param.dx, param.dy, 0.);
-  for(int j = 0; j < ny; j++) {
-    for(int i = 0; i < nx; i++) {
+  for(int i = 0; i < nx; i++) {
+    for(int j = 0; j < ny; j++) {
       double x = i * param.dx;
       double y = j * param.dy;
       double val = interpolate_data(&h, x, y);
@@ -157,8 +157,10 @@ int main(int argc, char **argv)
       exit(0);
     }
 
+
     update_eta(nx, ny, param, &u, &v, &eta, &h_interp);
     update_velocities(nx, ny, param, &u, &v, &eta);
+
 
     
   }

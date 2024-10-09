@@ -1,6 +1,5 @@
-# Ignorer tous les fichiers .vti
+# Ignorer tous les fichiers .vti/.vtk/.exe
 *.vti
-
-# Ignorer tous les fichiers .vtk
 *.vtk
+*.exe
 
