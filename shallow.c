@@ -36,9 +36,6 @@ double update_eta(int nx,
           - c1 / param.dx * (GET(u, i + 1, j) - GET(u, i, j))
           - c1 / param.dy * (GET(v, i, j + 1) - GET(v, i, j));
         SET(eta, i, j, eta_ij);
-        // /if (eta_ij != 0.) printf("eta_ij : %lf", eta_ij);
-        //double eta_val =  ((eta)->values[(eta)->nx * (j) + (i)]); 
-        //if (eta_val != 0.) (printf("eta_val (after update) : %lf \n",eta_val));
       }
     }
 }
@@ -65,6 +62,53 @@ double update_velocities(int nx,
       SET(v, i, j, v_ij);
     }
   }
+}
+
+void boundary_condition(int n,
+                        int nx, 
+                        int ny, 
+                        const struct parameters param, 
+                        struct data *u, 
+                        struct data *v, 
+                        struct data *eta)
+{
+    double t = n * param.dt;
+    if(param.source_type == 1) {
+      // sinusoidal velocity on top boundary
+      double A = 5;
+      double f = 1. / 20.;
+      for(int i = 0; i < nx; i++) {
+        for(int j = 0; j < ny; j++) {
+          SET(u, 0, j, 0.);
+          SET(u, nx, j, 0.);
+          SET(v, i, 0, 0.);
+          SET(v, i, ny, A * sin(2 * M_PI * f * t));
+        }
+      }
+    }
+    else if(param.source_type == 2) {
+      // sinusoidal elevation in the middle of the domain
+      double A = 5;
+      double f = 1. / 20.;
+      SET(eta, nx / 2, ny / 2, A * sin(2 * M_PI * f * t));
+    }
+    else {
+      // TODO: add other sources
+      printf("Error: Unknown source type %d\n", param.source_type);
+      exit(0);
+    }
+}
+
+void interp_bathy(int nx,
+                  int ny, 
+                  const struct parameters param,
+                  struct data *h_interp, 
+                  struct data *h){
+
+
+
+
+
 }
 
 
@@ -103,6 +147,9 @@ int main(int argc, char **argv)
   // interpolate bathymetry
   struct data h_interp;
   init_data(&h_interp, nx, ny, param.dx, param.dy, 0.);
+
+  //interp_bathy(nx, ny, param, &h_interp, &h);
+
   for(int i = 0; i < nx; i++) {
     for(int j = 0; j < ny; j++) {
       double x = i * param.dx;
@@ -114,6 +161,7 @@ int main(int argc, char **argv)
 
   double start = GET_TIME();
 
+  // Loop over timestep
   for(int n = 0; n < nt; n++) {
 
     if(n && (n % (nt / 10)) == 0) {
@@ -131,33 +179,9 @@ int main(int argc, char **argv)
     }
 
     // impose boundary conditions
-    double t = n * param.dt;
-    if(param.source_type == 1) {
-      // sinusoidal velocity on top boundary
-      double A = 5;
-      double f = 1. / 20.;
-      for(int i = 0; i < nx; i++) {
-        for(int j = 0; j < ny; j++) {
-          SET(&u, 0, j, 0.);
-          SET(&u, nx, j, 0.);
-          SET(&v, i, 0, 0.);
-          SET(&v, i, ny, A * sin(2 * M_PI * f * t));
-        }
-      }
-    }
-    else if(param.source_type == 2) {
-      // sinusoidal elevation in the middle of the domain
-      double A = 5;
-      double f = 1. / 20.;
-      SET(&eta, nx / 2, ny / 2, A * sin(2 * M_PI * f * t));
-    }
-    else {
-      // TODO: add other sources
-      printf("Error: Unknown source type %d\n", param.source_type);
-      exit(0);
-    }
+    boundary_condition(n, nx, ny, param, &u, &v, &eta);
 
-
+    // Update variables
     update_eta(nx, ny, param, &u, &v, &eta, &h_interp);
     update_velocities(nx, ny, param, &u, &v, &eta);
 
