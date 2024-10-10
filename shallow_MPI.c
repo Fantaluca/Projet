@@ -4,87 +4,153 @@
 
 // ... other includes and function definitions ...
 
+
+typedef struct {
+    int start;
+    int end;
+    int n;
+} limit_t;
+
+typedef struct {
+    double *data;
+    int nx, ny;
+    double dx, dy;
+} data_t;
+
 int main(int argc, char **argv) {
 
-    if(argc != 2){
-        printf("Usage: %s parameter_file\n", argv[0]);
-        return 1;
-    }
+    // Initialize paramters and h
+    struct parameters param;
+    if(read_parameters(&param, argv[1])) return 1;
+    print_parameters(&param);
 
-    int rank, // actual rank process
-    int size; // total nb of process
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    struct data h;
+    if(read_data(&h, param.input_h_filename)) return 1;
 
-    // ... parameter initialization ...
 
-    // Calculate 2D decomposition
+    // Infer size of domain from input bathymetric data
+    double hx = h.nx * h.dx;
+    double hy = h.ny * h.dy;
+    double dx = param.dx;
+    double dy = param.dy;
+    int nx = floor(hx / param.dx);
+    int ny = floor(hy / param.dy);
+    if(nx <= 0) nx = 1;
+    if(ny <= 0) ny = 1;
+    int nt = floor(param.max_t / param.dt);
+
+    int world_size, rank, cart_rank;
     int dims[2] = {0, 0};
-    MPI_Dims_create(size, 2, dims);
-    int px = dims[0]; // Number of processes in x direction
-    int py = dims[1]; // Number of processes in y direction
+    int periods[2] = {0, 0};
+    int reorder = 1;
+    MPI_Comm cart_comm;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     // Create 2D Cartesian communicator
-    MPI_Comm cart_comm;
-    int periods[2] = {0, 0};
-    int reorder = 1; //  MPI auto-organizes ranks of process (1) or not (0)
+    MPI_Dims_create(world_size, 2, dims);
     MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &cart_comm);
+    MPI_Comm_rank(cart_comm, &cart_rank);
 
-    // Get coordinates in the 2D process grid
     int coords[2];
-    MPI_Cart_coords(cart_comm, rank, 2, coords);
+    MPI_Cart_coords(cart_comm, cart_rank, 2, coords);
+
+    int neighbors[4];
+    MPI_Cart_shift(cart_comm, 0, 1, &neighbors[LEFT], &neighbors[RIGHT]);
+    MPI_Cart_shift(cart_comm, 1, 1, &neighbors[UP], &neighbors[DOWN]);
+
+    data_t *gathered_output;
+    double *receive_data;
+    limit_t **rank_limit;
+    int *recv_size, *displacements;
+
+    if (cart_rank == 0) {
+        int rank_coords[2];
+        int num[2] = {nx, ny};
+
+        if ((gathered_output = malloc(sizeof(data_t))) == NULL ||
+            (gathered_output->data = malloc(sizeof(double) * nx * ny)) == NULL ||
+            (displacements = malloc(sizeof(int) * world_size)) == NULL ||
+            (receive_data = malloc(sizeof(double) * nx * ny)) == NULL ||
+            (rank_limit = malloc(sizeof(limit_t*) * world_size)) == NULL ||
+            (recv_size = malloc(sizeof(int) * world_size)) == NULL) {
+            printf("Error when allocating memory");
+            MPI_Abort(cart_comm, MPI_ERR_NO_MEM);
+        }
+
+        int total_size = 0;
+        for (int r = 0; r < world_size; r++) {
+            if ((rank_limit[r] = malloc(2 * sizeof(limit_t))) == NULL) {
+                printf("Error when allocating memory");
+                MPI_Abort(cart_comm, MPI_ERR_NO_MEM);
+            }
+
+            MPI_Cart_coords(cart_comm, r, 2, rank_coords);
+            recv_size[r] = 1;
+            for (int i = 0; i < 2; i++) {
+                rank_limit[r][i].start = num[i] * rank_coords[i] / dims[i];
+                rank_limit[r][i].end = num[i] * (rank_coords[i] + 1) / dims[i] - 1;
+                rank_limit[r][i].n = (rank_limit[r][i].end - rank_limit[r][i].start + 1);
+
+                recv_size[r] *= rank_limit[r][i].n;
+            }
+
+            total_size += recv_size[r];
+            if (r == 0) {
+                displacements[r] = 0;
+            } else {
+                displacements[r] = displacements[r - 1] + recv_size[r - 1];
+            }
+        }
+    }
+
+    // Broadcast the dimensions to all processes
+    MPI_Bcast(&nx, 1, MPI_INT, 0, cart_comm);
+    MPI_Bcast(&ny, 1, MPI_INT, 0, cart_comm);
 
     // Calculate local domain size
-    int local_nx = nx / px;
-    int local_ny = ny / py;
-    int start_x = coords[0] * local_nx;
-    int start_y = coords[1] * local_ny;
-    int end_x = (coords[0] == px - 1) ? nx : start_x + local_nx;
-    int end_y = (coords[1] == py - 1) ? ny : start_y + local_ny;
-    local_nx = end_x - start_x;
-    local_ny = end_y - start_y;
+    limit_t local_limit[2];
+    for (int i = 0; i < 2; i++) {
+        local_limit[i].start = nx * coords[i] / dims[i];
+        local_limit[i].end = nx * (coords[i] + 1) / dims[i] - 1;
+        local_limit[i].n = local_limit[i].end - local_limit[i].start + 1;
+    }
 
-    int neighbors[4]; 
-    MPI_Cart_shift(cart_comm, 0, 1, &neighbors[LEFT], &neighbors[RIGHT]);  
-    MPI_Cart_shift(cart_comm, 1, 1, &neighbors[UP], &neighbors[DOWN]);  
+    int local_nx = local_limit[0].n;
+    int local_ny = local_limit[1].n;
 
     // Initialize local data structures
-    struct data local_eta, local_u, local_v, local_h_interp;
-    init_data(&local_eta, local_nx, local_ny, param.dx, param.dy, 0.);
-    init_data(&local_u, local_nx + 1, local_ny, param.dx, param.dy, 0.);
-    init_data(&local_v, local_nx, local_ny + 1, param.dx, param.dy, 0.);
-    init_data(&local_h_interp, local_nx, local_ny, param.dx, param.dy, 0.);
+    data_t local_data;
+    local_data.nx = local_nx;
+    local_data.ny = local_ny;
+    local_data.dx = dx;
+    local_data.dy = dy;
+    local_data.data = malloc(sizeof(double) * local_nx * local_ny);
 
-    // ... interpolate bathymetry for local domain ...
-
-    for(int n = 0; n < nt; n++){
-        // ... timing and output code ...
-
-        // Exchange ghost cells with neighbouring processes
-        exchange_ghost_cells(&local_eta, &local_u, &local_v, cart_comm);
-
-        // Update variables for local domain
-        update_eta(local_nx, local_ny, param, &local_u, &local_v, &local_eta, &local_h_interp);
-        update_velocities(local_nx, local_ny, param, &local_u, &local_v, &local_eta);
-
-        // ... boundary conditions and other updates ...
+    // Initialize local data (placeholder)
+    for (int i = 0; i < local_nx * local_ny; i++) {
+        local_data.data[i] = 0.0;
     }
 
-    // Gather results from all processes
-    if (rank == 0){
-        // Allocate memory for full domain data
-        init_data(&eta, nx, ny, param.dx, param.dy, 0.);
-        // ... similar for u and v ...
+    // Clean up
+    if (cart_rank == 0) {
+        free(gathered_output->data);
+        free(gathered_output);
+        free(displacements);
+        free(receive_data);
+        for (int r = 0; r < world_size; r++) {
+            free(rank_limit[r]);
+        }
+        free(rank_limit);
+        free(recv_size);
     }
-    gather_data(&local_eta, &eta, local_nx, local_ny, nx, ny, cart_comm);
-
-    // ... output results, free memory, etc. ...
+    free(local_data.data);
 
     MPI_Finalize();
     return 0;
 }
-
 void exchange_ghost_cells(struct data *eta, struct data *u, struct data *v, MPI_Comm cart_comm){
 
     int rank, coords[2], nbr_coords[2];
