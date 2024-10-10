@@ -26,7 +26,10 @@
 #define GET(data, i, j) ((data)->values[(data)->nx * (j) + (i)])
 #define SET(data, i, j, val) ((data)->values[(data)->nx * (j) + (i)] = (val))
 
-// Define structures
+/*-------------------*/
+/* Define structures */
+/*-------------------*/
+
 struct parameters {
     double dx, dy, dt, max_t;
     double g, gamma;
@@ -44,9 +47,21 @@ struct data {
     double *values;
 };
 
-// Declare function prototypes
+enum neighbour {
+  LEFT  = 0,
+  RIGHT = 1,
+  UP = 2,
+  DOWN  = 3,
+  NEIGHBOR_NUM = 4,
+};
 
-// From "shallow.c"
+
+
+/*---------------------------*/
+/* Define functon prototypes */
+/*---------------------------*/
+
+/*------ From "shallow.c" ------*/
 double update_velocities(int nx, 
                          int ny, 
                          const struct parameters param, 
@@ -72,7 +87,7 @@ void interp_bathy(int nx,
                   struct data *h);
 
 
-// From "tools.c"
+/*------ From "tools.c" ------*/
 int read_parameters(struct parameters *param,
                     const char *filename);
 

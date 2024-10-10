@@ -133,38 +133,44 @@ int write_data_vtk(const struct data *data, const char *name,
                    const char *filename, int step) {
 
   char out[MAX_PATH_LENGTH];
-  if(step < 0)
+ if(step < 0)
     sprintf(out, "output/%s.vti", filename);
   else
     sprintf(out, "output/%s_%d.vti", filename, step);
 
-  FILE *fp = fopen(out, "w");
+  FILE *fp = fopen(out, "wb");
   if(!fp) {
     printf("Error: Could not open output VTK file '%s'\n", out);
     return 1;
   }
 
-  unsigned long num_points = data->nx * data->ny;
+  uint64_t num_points = data->nx * data->ny;
+  uint64_t num_bytes = num_points * sizeof(double);
 
   fprintf(fp, "<?xml version=\"1.0\"?>\n");
-  fprintf(fp, "<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">\n");
-  fprintf(fp, "  <ImageData WholeExtent=\"0 %d 0 %d 0 0\" Spacing=\"%lf %lf 0.0\">\n",
+  fprintf(fp, "<VTKFile type=\"ImageData\" version=\"1.0\" "
+          "byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
+  fprintf(fp, "  <ImageData WholeExtent=\"0 %d 0 %d 0 0\" "
+          "Spacing=\"%lf %lf 0.0\">\n",
           data->nx - 1, data->ny - 1, data->dx, data->dy);
   fprintf(fp, "    <Piece Extent=\"0 %d 0 %d 0 0\">\n",
           data->nx - 1, data->ny - 1);
 
   fprintf(fp, "      <PointData Scalars=\"scalar_data\">\n");
-  fprintf(fp, "        <DataArray type=\"Float64\" Name=\"%s\" format=\"ascii\">\n", name);
-  
-  for (unsigned long i = 0; i < num_points; i++) {
-    fprintf(fp, "%.17e\n", data->values[i]);
-  }
-  
+  fprintf(fp, "        <DataArray type=\"Float64\" Name=\"%s\" "
+          "format=\"appended\" offset=\"0\">\n", name);
   fprintf(fp, "        </DataArray>\n");
   fprintf(fp, "      </PointData>\n");
 
   fprintf(fp, "    </Piece>\n");
   fprintf(fp, "  </ImageData>\n");
+
+  fprintf(fp, "  <AppendedData encoding=\"raw\">\n_");
+
+  fwrite(&num_bytes, sizeof(uint64_t), 1, fp);
+  fwrite(data->values, sizeof(double), num_points, fp);
+
+  fprintf(fp, "  </AppendedData>\n");
   fprintf(fp, "</VTKFile>\n");
 
   fclose(fp);
@@ -177,7 +183,7 @@ int write_manifest_vtk(const char *filename, double dt, int nt,
   char out[MAX_PATH_LENGTH];
   sprintf(out, "output/%s.pvd", filename);
 
-  FILE *fp = fopen(out, "wb");
+   FILE *fp = fopen(out, "wb");
   if(!fp) {
     printf("Error: Could not open output VTK manifest file '%s'\n", out);
     return 1;
