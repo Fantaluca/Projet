@@ -73,7 +73,7 @@ Note: Using implicit Euler instead would lead to evaluating all the velocities (
 
 - A compatible C compiler (e.g., GCC)
 - OpenMP
-- MPI (Microsoft MPI for Windows)
+- MPI 
 
 ## Compilation
 
@@ -81,24 +81,24 @@ Note: Using implicit Euler instead would lead to evaluating all the velocities (
 
 1. Ensure Microsoft MPI is installed and environment variables are properly configured.
 
-2. Use the `debug.bat` script to compile the code:
+2. Use the `set_MPI.bat` script to compile the code:
 
    ```
-   ./debug.bat shallow_MPI_exe shallow_MPI.c tools_MPI.c
+   ./set_MPI.bat shallow_MPI_exe shallow_MPI.c tools_MPI.c
    ```
 
-   The content of the `debug.bat` file is as follows:
+   The content of the `set_MPI.bat` file is as follows:
 
    ```batch
    @echo off
-   REM Make sure these paths match your installation
-   set MSMPI_INC="C:\Program Files (x86)\Microsoft SDKs\MPI\Include"
-   set MSMPI_LIB64="C:\Program Files (x86)\Microsoft SDKs\MPI\Lib\x64"
+    REM Assurez-vous que ces chemins correspondent à votre installation
+    set MSMPI_INC="C:\Program Files (x86)\Microsoft SDKs\MPI\Include"
+    set MSMPI_LIB64="C:\Program Files (x86)\Microsoft SDKs\MPI\Lib\x64"
 
-   REM Compilation with gcc, including optimization options and OpenMP
-   gcc -O3 -fopenmp -I%MSMPI_INC% -L%MSMPI_LIB64% -o %1 %2 %3 -lmsmpi -lm
+    REM Compilation avec gcc, incluant les options d'optimisation et OpenMP
+    gcc -O3 -fopenmp -I%MSMPI_INC% -L%MSMPI_LIB64% -o %1 %2 %3 -lmsmpi -lm
 
-   REM use 'mpiexec -n <number_of_processes> %1' to execute.
+    REM use 'mpiexec -n <nombre_de_processus> %1' pour exécuter.
    ```
 
 ## Execution
@@ -111,10 +111,6 @@ mpiexec -n 4 .\shallow_MPI_exe.exe
 
 Replace `4` with the number of processes you want to use.
 
-## Contributing
+### On Linux
 
-Contributions to this project are welcome. Please feel free to open an issue or submit a pull request.
-
-## License
-
-[Insert license information here]
+TO DO
