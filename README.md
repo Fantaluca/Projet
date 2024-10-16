@@ -68,6 +68,7 @@ Note: Using implicit Euler instead would lead to evaluating all the velocities (
 - Solves shallow water equations using finite differences
 - Optimized with OpenMP for CPU parallelism
 - Utilizes MPI for distributed computing
+- Will soon be able to use GPU acceleration
 
 ## Prerequisites
 
