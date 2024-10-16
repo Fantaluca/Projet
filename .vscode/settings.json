@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "shallow.h": "c",
+        "time.h": "c",
+        "stdio.h": "c"
+    },
+    "C_Cpp.default.compilerPath": "C:\\Users\\lucas\\mingw64\\bin\\gcc.exe"
+}

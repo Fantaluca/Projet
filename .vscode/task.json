@@ -1,0 +1,5 @@
+"-I",
+"${MSMPI_INC}",
+"-L",
+"${MSMPI_LIB64}",
+"-lmsmpi",

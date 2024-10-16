@@ -1,12 +1,57 @@
-#include "shallow.h"
+#include "shallow_MPI.h"
+
+void free_all_data(all_data_t* all_data) {
+    if (all_data != NULL) {
+        free(all_data->u);
+        free(all_data->v);
+        free(all_data->eta);
+        free(all_data->h);
+        free(all_data->h_interp);
+        free(all_data);
+    }
+}
+
+all_data_t* allocate_all_data() {
+
+    all_data_t* all_data = (all_data_t*)malloc(sizeof(all_data_t));
+    if (all_data == NULL) {
+        fprintf(stderr, "Erreur d'allocation pour all_data\n");
+        return NULL;
+    }
+
+    all_data->u = NULL;
+    all_data->v = NULL;
+    all_data->eta = NULL;
+    all_data->h = NULL;
+    all_data->h_interp = NULL;
+
+    // Allouer chaque data_t
+    all_data->u = (data_t*)malloc(sizeof(data_t));
+    all_data->v = (data_t*)malloc(sizeof(data_t));
+    all_data->eta = (data_t*)malloc(sizeof(data_t));
+    all_data->h = (data_t*)malloc(sizeof(data_t));
+    all_data->h_interp = (data_t*)malloc(sizeof(data_t));
+
+    // Vérifier chaque allocation
+    if (all_data->u == NULL || all_data->v == NULL || all_data->eta == NULL ||
+        all_data->h == NULL || all_data->h_interp == NULL) {
+        fprintf(stderr, "Erreur d'allocation pour les data_t\n");
+        // Libérer ce qui a été alloué en cas d'échec
+        free_all_data(all_data);
+        return NULL;
+    }
+
+    return all_data;
+}
+
 
 int read_parameters(struct parameters *param, const char *filename)
 {
-  printf("read_parameters function\n");
+
   char full_path[MAX_PATH_LENGTH];
   snprintf(full_path, sizeof(full_path), "%s%s", INPUT_DIR, filename);
 
-  FILE *fp = fopen(filename, "r");
+  FILE *fp = fopen(full_path, "r");
   if(!fp) {
     printf("Error: Could not open parameter file '%s'\n", full_path);
     return 1;
@@ -63,17 +108,21 @@ void print_parameters(const struct parameters *param)
 
 int read_data(data_t *data, const char *filename)
 {
-  printf("read_data function\n");
+  printf(" %s", filename);
   FILE *fp = fopen(filename, "rb");
+
   if(!fp) {
     printf("Error: Could not open input data file '%s'\n", filename);
     return 1;
   }
+  
   int ok = 1;
   if(ok) ok = (fread(&data->nx, sizeof(int), 1, fp) == 1);
   if(ok) ok = (fread(&data->ny, sizeof(int), 1, fp) == 1);
   if(ok) ok = (fread(&data->dx, sizeof(double), 1, fp) == 1);
   if(ok) ok = (fread(&data->dy, sizeof(double), 1, fp) == 1);
+
+  
   if(ok) {
     int N = data->nx * data->ny;
     if(N <= 0) {
@@ -81,13 +130,13 @@ int read_data(data_t *data, const char *filename)
       ok = 0;
     }
     else {
-      data->values = (double*)malloc(N * sizeof(double));
-      if(!data->values) {
+      data->vals = (double*)malloc(N * sizeof(double));
+      if(!data->vals) {
         printf("Error: Could not allocate data (%d doubles)\n", N);
         ok = 0;
       }
       else {
-        ok = (fread(data->values, sizeof(double), N, fp) == N);
+        ok = (fread(data->vals, sizeof(double), N, fp) == N);
       }
     }
   }
@@ -96,6 +145,7 @@ int read_data(data_t *data, const char *filename)
     printf("Error reading input data file '%s'\n", filename);
     return 1;
   }
+  
   return 0;
 }
 
@@ -118,7 +168,7 @@ int write_data(const data_t *data, const char *filename, int step)
   if(ok) ok = (fwrite(&data->dx, sizeof(double), 1, fp) == 1);
   if(ok) ok = (fwrite(&data->dy, sizeof(double), 1, fp) == 1);
   int N = data->nx * data->ny;
-  if(ok) ok = (fwrite(data->values, sizeof(double), N, fp) == N);
+  if(ok) ok = (fwrite(data->vals, sizeof(double), N, fp) == N);
   fclose(fp);
   if(!ok) {
     printf("Error writing data file '%s'\n", out);
@@ -129,7 +179,7 @@ int write_data(const data_t *data, const char *filename, int step)
 
 
 
-int write_data_vtk(const data_t *data, const char *name,
+int write_data_vtk(data_t **data, const char *name,
                    const char *filename, int step) {
 
   char out[MAX_PATH_LENGTH];
@@ -144,7 +194,7 @@ int write_data_vtk(const data_t *data, const char *name,
     return 1;
   }
 
-  uint64_t num_points = data->nx * data->ny;
+  uint64_t num_points = (*data)->nx * (*data)->ny;
   uint64_t num_bytes = num_points * sizeof(double);
 
   fprintf(fp, "<?xml version=\"1.0\"?>\n");
@@ -152,9 +202,9 @@ int write_data_vtk(const data_t *data, const char *name,
           "byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
   fprintf(fp, "  <ImageData WholeExtent=\"0 %d 0 %d 0 0\" "
           "Spacing=\"%lf %lf 0.0\">\n",
-          data->nx - 1, data->ny - 1, data->dx, data->dy);
+          (*data)->nx - 1, (*data)->ny - 1, (*data)->dx, (*data)->dy);
   fprintf(fp, "    <Piece Extent=\"0 %d 0 %d 0 0\">\n",
-          data->nx - 1, data->ny - 1);
+          (*data)->nx - 1, (*data)->ny - 1);
 
   fprintf(fp, "      <PointData Scalars=\"scalar_data\">\n");
   fprintf(fp, "        <DataArray type=\"Float64\" Name=\"%s\" "
@@ -168,7 +218,7 @@ int write_data_vtk(const data_t *data, const char *name,
   fprintf(fp, "  <AppendedData encoding=\"raw\">\n_");
 
   fwrite(&num_bytes, sizeof(uint64_t), 1, fp);
-  fwrite(data->values, sizeof(double), num_points, fp);
+  fwrite((*data)->vals, sizeof(double), num_points, fp);
 
   fprintf(fp, "  </AppendedData>\n");
   fprintf(fp, "</VTKFile>\n");
@@ -212,16 +262,16 @@ int init_data(data_t *data, int nx, int ny, double dx, double dy,
   data->ny = ny;
   data->dx = dx;
   data->dy = dy;
-  data->values = (double*)malloc(nx * ny * sizeof(double));
-  if(!data->values){
+  data->vals = (double*)malloc(nx * ny * sizeof(double));
+  if(!data->vals){
     printf("Error: Could not allocate data\n");
     return 1;
   }
-  for(int i = 0; i < nx * ny; i++) data->values[i] = val;
+  for(int i = 0; i < nx * ny; i++) data->vals[i] = val;
   return 0;
 }
 
 void free_data(data_t *data)
 {
-  free(data->values);
+  free(data->vals);
 }
