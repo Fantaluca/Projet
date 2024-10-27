@@ -226,14 +226,11 @@ void update_eta(const struct parameters param,
   MPI_Isend(send_u, ny, MPI_DOUBLE, direction[LEFT], 100, cart_comm, &request_recv[0]);
   MPI_Isend(send_v, nx, MPI_DOUBLE, direction[DOWN], 101, cart_comm, &request_recv[0]);
 
-  free(send_u);
-  free(send_v);
-
   // Updating (inside domain)
   double dx = param.dx;
   double dy = param.dy;
   
-  for (int i_rank = i_start+1; i_rank <= i_end; i_rank++) {
+  for (int i_rank = i_start; i_rank < i_end; i_rank++) {
     for (int j_rank = j_start+1; j_rank <= j_end; j_rank++) {
 
       int i_local = i_rank - i_start;
@@ -256,7 +253,7 @@ void update_eta(const struct parameters param,
 
   // Update (right boundary)
   int i_rank = i_end;
-  for (int j_rank = j_start+1; j_rank < j_end; j_rank++) {
+  for (int j_rank = j_start; j_rank <= j_end; j_rank++) {
       int i_local = i_rank - i_start;
       int j_local = j_rank - j_start;
       
@@ -272,8 +269,8 @@ void update_eta(const struct parameters param,
   }
 
   // Update (top boundary)
-  int j_rank = j_end;
-  for (int i_rank = i_start+1; i_rank < i_end; i_rank++) {
+  int j_rank = j_start;
+  for (int i_rank = i_start; i_rank <= i_end; i_rank++) {
       int i_local = i_rank - i_start;
       int j_local = j_rank - j_start;
       
@@ -332,8 +329,7 @@ void update_velocities(const struct parameters param,
     MPI_Isend(send_eta_right, ny, MPI_DOUBLE, direction[RIGHT], 200, cart_comm, &request_send[0]);
     MPI_Isend(send_eta_up, nx, MPI_DOUBLE, direction[UP], 201, cart_comm, &request_send[1]);
 
-    free(send_eta_right);
-    free(send_eta_up);
+  
 
     double dx = param.dx;
     double dy = param.dy;
@@ -634,7 +630,7 @@ int main(int argc, char **argv) {
       }
 
       // impose boundary conditions
-      //boundary_source_condition(n, nx, ny, param, &all_data);
+      boundary_source_condition(n, nx, ny, param, &all_data);
 
       // Gather all output from processes
       if (param.sampling_rate && !(n % param.sampling_rate)) {
@@ -643,14 +639,19 @@ int main(int argc, char **argv) {
         data_t *output_data[] = {all_data->eta, all_data->u, all_data->v};
         const char *output_files[] = {param.output_eta_filename, param.output_u_filename, param.output_v_filename};
 
+  
+        printf("Valeur : %lf\n", GET(output_data[1], 50, 50));
+
         
         for (int i = 0; i < 3; i++) {
 
           
           // Tentative de MPI_Gatherv avec gestion d'erreur
+          /*
           int gatherv_result = MPI_Gatherv(output_data[i]->vals, send_size, MPI_DOUBLE, 
-                                     receive_data, recv_size, displacements, MPI_DOUBLE, 
-                                        0, cart_comm);
+                                          receive_data, recv_size, displacements, MPI_DOUBLE, 
+                                          0, cart_comm);
+          
           
           if (gatherv_result != MPI_SUCCESS) {
               char error_string[MPI_MAX_ERROR_STRING];
@@ -680,8 +681,9 @@ int main(int argc, char **argv) {
             //write_data_vtk(&u, "x velocity", param.output_u_filename, n);
             //write_data_vtk(&v, "y velocity", param.output_v_filename, n);
           }
+        
+        */
         }
-
         printf("Exiting sampling block\n");
       }
       

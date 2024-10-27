@@ -42,11 +42,11 @@ struct parameters {
 };
 
 enum neighbour {
-  LEFT  = 0,
-  RIGHT = 1,
-  UP = 2,
-  DOWN  = 3,
-  NEIGHBOR_NUM = 4,
+    LEFT  = 0,
+    RIGHT = 1,
+    UP    = 2,
+    DOWN  = 3,
+    NEIGHBOR_NUM = 4,
 };
 
 typedef struct {
@@ -62,86 +62,73 @@ typedef struct {
 } data_t;
 
 typedef struct {
-    
     data_t *u;
     data_t *v;
     data_t *eta;
     data_t *h;
     data_t *h_interp;
-
 } all_data_t;
-
-
-
-
 
 /*---------------------------*/
 /* Define functon prototypes */
 /*---------------------------*/
 
 /*------ From "shallow.c" ------*/
-double update_velocities(int nx, 
-                         int ny, 
-                         const struct parameters param, 
-                         struct data *u, 
-                         struct data *v, 
-                         struct data *eta);
-double update_eta(int nx, 
-                  int ny, 
-                  const struct parameters param, 
-                  struct data *u, 
-                  struct data *v, 
-                  struct data *eta, 
-                  struct data *h_interp);
+void update_velocities(int nx, 
+                      int ny,
+                      const struct parameters param,
+                      all_data_t *all_data);
 
-double interpolate_data(const data_t *data, 
-                        double x, 
-                        double y);
+void update_eta(int nx,
+                int ny,
+                const struct parameters param,
+                all_data_t *all_data);
+
+double interpolate_data(const data_t *data,
+                       double x,
+                       double y);
 
 void interp_bathy(int nx,
                   int ny, 
                   const struct parameters param,
                   all_data_t *all_data);
 
+void boundary_condition(int n,
+                       int nx,
+                       int ny,
+                       const struct parameters param,
+                       all_data_t *all_data);
 
 /*------ From "tools.c" ------*/
 int read_parameters(struct parameters *param,
-                    const char *filename);
-
-
+                   const char *filename);
 
 void print_parameters(const struct parameters *param);
 
-
-int read_data(struct data *data, 
+int read_data(data_t *data,
               const char *filename);
 
-
-int write_data(const struct data *data, 
-               const char *filename, 
+int write_data(const data_t *data,
+               const char *filename,
                int step);
 
-
-int write_data_vtk(const struct data *data, 
-                   const char *name, 
+int write_data_vtk(const data_t *data,
+                   const char *name,
                    const char *filename,
                    int step);
 
-
 int write_manifest_vtk(const char *filename,
-                       double dt, 
-                       int nt, 
-                       int sampling_rate);
+                      double dt,
+                      int nt,
+                      int sampling_rate);
 
-
-int init_data(struct data *data, 
-              int nx, 
-              int ny, 
-              double dx, 
-              double dy, 
+int init_data(data_t *data,
+              int nx,
+              int ny,
+              double dx,
+              double dy,
               double val);
 
-
-void free_data(struct data *data);
+void free_data(data_t *data);
 
 #endif // SHALLOW_H

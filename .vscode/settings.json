@@ -1,6 +1,6 @@
 {
     "files.associations": {
-        "shallow.h": "c",
+        "shallow_OMP.h": "c",
         "time.h": "c",
         "stdio.h": "c"
     },

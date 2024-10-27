@@ -1,4 +1,4 @@
-#include "shallow.h"
+#include "shallow_OMP.h"
 
 int read_parameters(struct parameters *param, const char *filename)
 {
@@ -6,7 +6,7 @@ int read_parameters(struct parameters *param, const char *filename)
   char full_path[MAX_PATH_LENGTH];
   snprintf(full_path, sizeof(full_path), "%s%s", INPUT_DIR, filename);
 
-  FILE *fp = fopen(filename, "r");
+  FILE *fp = fopen(full_path, "r");
   if(!fp) {
     printf("Error: Could not open parameter file '%s'\n", full_path);
     return 1;
