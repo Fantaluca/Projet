@@ -1,7 +1,7 @@
 #include "shallow.h"
 
 
-double interpolate_data(const struct data *data, 
+double interpolate_data(const data_t *data, 
                         double x, 
                         double y){
 
@@ -44,10 +44,10 @@ double interpolate_data(const struct data *data,
 double update_eta(int nx, 
                   int ny, 
                   const struct parameters param, 
-                  struct data *u, 
-                  struct data *v, 
-                  struct data *eta, 
-                  struct data *h_interp){
+                  data_t *u, 
+                  data_t *v, 
+                  data_t *eta, 
+                  data_t *h_interp){
 
   for(int i = 0; i < nx; i++) {
     for(int j = 0; j < ny ; j++) {
@@ -65,9 +65,9 @@ double update_eta(int nx,
 double update_velocities(int nx, 
                          int ny, 
                          const struct parameters param, 
-                         struct data *u, 
-                         struct data *v, 
-                         struct data *eta){
+                         data_t *u, 
+                         data_t *v, 
+                         data_t *eta){
 
   for(int i = 0; i < nx; i++){
     for(int j = 0; j < ny; j++){
@@ -91,10 +91,10 @@ void boundary_condition(int n,
                         int nx, 
                         int ny, 
                         const struct parameters param, 
-                        struct data *u, 
-                        struct data *v, 
-                        struct data *eta,
-                        const struct data *h_interp)
+                        data_t *u, 
+                        data_t *v, 
+                        data_t *eta,
+                        const data_t *h_interp)
 {
     double t = n * param.dt;
     if(param.source_type == 1){
@@ -162,8 +162,8 @@ void boundary_condition(int n,
 void interp_bathy(int nx,
                   int ny, 
                   const struct parameters param,
-                  struct data *h_interp, 
-                  struct data *h){
+                  data_t *h_interp, 
+                  data_t *h){
 
   for(int i = 0; i < nx; i++){
     for(int j = 0; j < ny; j++){
@@ -189,7 +189,7 @@ int main(int argc, char **argv){
   if(read_parameters(&param, argv[1])) return 1;
   print_parameters(&param);
 
-  struct data h;
+  data_t h;
   if(read_data(&h, param.input_h_filename)) return 1;
 
 
@@ -207,13 +207,13 @@ int main(int argc, char **argv){
   printf(" - number of time steps: %d\n", nt);
 
   // Initialize variables
-  struct data eta, u, v;
+  data_t eta, u, v;
   init_data(&eta, nx, ny, param.dx, param.dy, 0.);
   init_data(&u, nx + 1, ny, param.dx, param.dy, 0.);
   init_data(&v, nx, ny + 1, param.dx, param.dy, 0.);
 
   // Interpolate bathymetry
-  struct data h_interp;
+  data_t h_interp;
   init_data(&h_interp, nx, ny, param.dx, param.dy, 0.);
   interp_bathy(nx, ny, param, &h_interp, &h);
 

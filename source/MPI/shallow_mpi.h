@@ -32,12 +32,12 @@
 
 
 // To obtain number of nodes and limits of rank
-#define RANK_NX(rank) (rank_glob[rank][0].n)
-#define RANK_NY(rank) (rank_glob[rank][1].n)
-#define START_I(rank) (rank_glob[rank][0].start)
-#define END_I(rank) (rank_glob[rank][0].end)
-#define START_J(rank) (rank_glob[rank][1].start)
-#define END_J(rank) (rank_glob[rank][1].end)
+#define RANK_NX(gdata, rank) ((*gdata)->rank_glob[rank][0].n)
+#define RANK_NY(gdata, rank) ((*gdata)->rank_glob[rank][1].n)
+#define START_I(gdata, rank) ((*gdata)->rank_glob[rank][0].start)
+#define END_I(gdata, rank)   ((*gdata)->rank_glob[rank][0].end)
+#define START_J(gdata, rank) ((*gdata)->rank_glob[rank][1].start)
+#define END_J(gdata, rank)   ((*gdata)->rank_glob[rank][1].end)
 
 
 /*-------------------*/
@@ -83,6 +83,24 @@ typedef struct {
     data_t *h_interp;
 } all_data_t;
 
+typedef struct {
+    int nb_process;
+    int rank;
+    int cart_rank;
+    int dims[2];
+    int coords[2];
+    int neighbors[NEIGHBOR_NUM];
+    MPI_Comm cart_comm;
+} MPITopology;
+
+typedef struct {
+    data_t *gathered_output;
+    double *receive_data;
+    limit_t **rank_glob;
+    int *recv_size;
+    int *displacements;
+} gather_data_t;
+
 
 
 /*---------------------------*/
@@ -99,9 +117,8 @@ void update_velocities(const struct parameters param,
 
 void update_eta(const struct parameters param, 
                 all_data_t **all_data,
-                limit_t **rank_glob,
-                int cart_rank,
-                MPI_Comm cart_comm,
+                gather_data_t *gdata,
+                MPITopology *topo,
                 neighbour_t *direction);
 
 void boundary_source_condition(int n,
@@ -164,6 +181,19 @@ int init_data(data_t *data,
               double dx, 
               double dy, 
               double val);
+
+double get_value_MPI(data_t *data, 
+                     int i, 
+                     int j, 
+                     gather_data_t *gdata,
+                     MPITopology *topo);
+
+double set_value_MPI(data_t *data, 
+                     int i, 
+                     int j, 
+                     gather_data_t *gdata,
+                     MPITopology *topo,
+                     double val);
 
 
 void free_data(data_t *data);

@@ -2,7 +2,9 @@
     "files.associations": {
         "shallow_OMP.h": "c",
         "time.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "math.h": "c",
+        "compare": "c"
     },
     "C_Cpp.default.compilerPath": "C:\\Users\\lucas\\mingw64\\bin\\gcc.exe"
 }

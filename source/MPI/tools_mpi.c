@@ -1,48 +1,5 @@
 #include "shallow_MPI.h"
 
-void free_all_data(all_data_t* all_data) {
-    if (all_data != NULL) {
-        free(all_data->u);
-        free(all_data->v);
-        free(all_data->eta);
-        free(all_data->h);
-        free(all_data->h_interp);
-        free(all_data);
-    }
-}
-
-all_data_t* allocate_all_data() {
-
-    all_data_t* all_data = (all_data_t*)malloc(sizeof(all_data_t));
-    if (all_data == NULL) {
-        fprintf(stderr, "Erreur d'allocation pour all_data\n");
-        return NULL;
-    }
-
-    all_data->u = NULL;
-    all_data->v = NULL;
-    all_data->eta = NULL;
-    all_data->h = NULL;
-    all_data->h_interp = NULL;
-
-    // Allouer chaque data_t
-    all_data->u = (data_t*)malloc(sizeof(data_t));
-    all_data->v = (data_t*)malloc(sizeof(data_t));
-    all_data->eta = (data_t*)malloc(sizeof(data_t));
-    all_data->h = (data_t*)malloc(sizeof(data_t));
-    all_data->h_interp = (data_t*)malloc(sizeof(data_t));
-
-    // Vérifier chaque allocation
-    if (all_data->u == NULL || all_data->v == NULL || all_data->eta == NULL ||
-        all_data->h == NULL || all_data->h_interp == NULL) {
-        fprintf(stderr, "Erreur d'allocation pour les data_t\n");
-        // Libérer ce qui a été alloué en cas d'échec
-        free_all_data(all_data);
-        return NULL;
-    }
-
-    return all_data;
-}
 
 
 int read_parameters(struct parameters *param, const char *filename)

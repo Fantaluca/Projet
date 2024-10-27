@@ -41,20 +41,6 @@ struct parameters {
     char output_v_filename[MAX_PATH_LENGTH];
 };
 
-enum neighbour {
-    LEFT  = 0,
-    RIGHT = 1,
-    UP    = 2,
-    DOWN  = 3,
-    NEIGHBOR_NUM = 4,
-};
-
-typedef struct {
-    int start;
-    int end;
-    int n;
-} limit_t;
-
 typedef struct {
     double *values;
     int nx, ny;
