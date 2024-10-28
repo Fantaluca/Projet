@@ -213,8 +213,7 @@ int write_manifest_vtk(const char *filename, double dt, int nt,
 }
 
 int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, int has_edges) {
-    printf("Initializing data structure with dimensions %dx%d\n", nx, ny);
-    fflush(stdout);
+    
 
     if (data == NULL) return 1;
 
@@ -261,5 +260,198 @@ int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, in
     }
 
     return 0;
+}
+
+void free_all_data(all_data_t *all_data) {
+    if (all_data == NULL) return;
+
+    if (all_data->u != NULL) {
+        free_data(all_data->u, 1);
+        all_data->u = NULL;
+    }
+    
+    if (all_data->v != NULL) {
+        free_data(all_data->v, 1);
+        all_data->v = NULL;
+    }
+    
+    if (all_data->eta != NULL) {
+        free_data(all_data->eta, 1);
+        all_data->eta = NULL;
+    }
+    
+    if (all_data->h != NULL) {
+        free_data(all_data->h, 0);
+        all_data->h = NULL;
+    }
+    
+    if (all_data->h_interp != NULL) {
+        free_data(all_data->h_interp, 0);
+        all_data->h_interp = NULL;
+    }
+
+    free(all_data);
+}
+
+void free_data(data_t *data, int has_edges) {
+    if (data == NULL) return;
+
+    if (data->vals != NULL) {
+        free(data->vals);
+        data->vals = NULL;
+    }
+
+    if (has_edges && data->edge_vals != NULL) {
+        for (int i = 0; i < NEIGHBOR_NUM; i++) {
+            if (data->edge_vals[i] != NULL) {
+                free(data->edge_vals[i]);
+                data->edge_vals[i] = NULL;
+            }
+        }
+        free(data->edge_vals);
+        data->edge_vals = NULL;
+    }
+
+    free(data);
+}
+
+void cleanup(parameters_t *param, MPITopology *topo, gather_data_t *gdata) {
+    if (gdata == NULL || topo == NULL) return;
+
+    MPI_Barrier(topo->cart_comm);
+
+    if (gdata->recv_size_eta) { free(gdata->recv_size_eta); gdata->recv_size_eta = NULL; }
+    if (gdata->recv_size_u) { free(gdata->recv_size_u); gdata->recv_size_u = NULL; }
+    if (gdata->recv_size_v) { free(gdata->recv_size_v); gdata->recv_size_v = NULL; }
+    if (gdata->displacements_eta) { free(gdata->displacements_eta); gdata->displacements_eta = NULL; }
+    if (gdata->displacements_u) { free(gdata->displacements_u); gdata->displacements_u = NULL; }
+    if (gdata->displacements_v) { free(gdata->displacements_v); gdata->displacements_v = NULL; }
+
+    if (topo->cart_rank == 0) {
+        if (gdata->gathered_output) {
+            free(gdata->gathered_output);
+            gdata->gathered_output = NULL;
+        }
+        
+        if (gdata->receive_data_eta) { free(gdata->receive_data_eta); gdata->receive_data_eta = NULL; }
+        if (gdata->receive_data_u) { free(gdata->receive_data_u); gdata->receive_data_u = NULL; }
+        if (gdata->receive_data_v) { free(gdata->receive_data_v); gdata->receive_data_v = NULL; }
+
+        if (gdata->rank_glob) {
+            for (int r = 0; r < topo->nb_process; r++) {
+                if (gdata->rank_glob[r]) {
+                    free(gdata->rank_glob[r]);
+                    gdata->rank_glob[r] = NULL;
+                }
+            }
+            free(gdata->rank_glob);
+            gdata->rank_glob = NULL;
+        }
+    }
+
+    free(gdata);
+}
+
+void cleanup_mpi_topology(MPITopology *topo) {
+    if (topo->cart_comm != MPI_COMM_NULL && topo->cart_comm != MPI_COMM_WORLD) {
+        MPI_Comm_free(&topo->cart_comm);
+    }
+}
+
+all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
+  
+    all_data_t* all_data = malloc(sizeof(all_data_t));
+    if (all_data == NULL) {
+        fprintf(stderr, "Error: Failed to allocate all_data\n");
+        return NULL;
+    }
+
+    // Initialize all pointers to NULL
+    all_data->u = NULL;
+    all_data->v = NULL;
+    all_data->eta = NULL;
+    all_data->h = NULL;
+    all_data->h_interp = NULL;
+
+    // Allocate and read bathymetry data
+    all_data->h = malloc(sizeof(data_t));
+    if (all_data->h == NULL) {
+        fprintf(stderr, "Error: Failed to allocate h structure\n");
+        free_all_data(all_data);
+        return NULL;
+    }
+
+    if (read_data(all_data->h, param->input_h_filename)) {
+        fprintf(stderr, "Error: Failed to read bathymetry data\n");
+        free_all_data(all_data);
+        return NULL;
+    }
+
+    // Calculate global domain dimensions
+    double hx = all_data->h->nx * all_data->h->dx;
+    double hy = all_data->h->ny * all_data->h->dy;
+    int nx_glob = floor(hx / param->dx);
+    int ny_glob = floor(hy / param->dy);
+
+    // Calculate local dimensions
+    int local_nx = nx_glob / topo->dims[0];
+    int local_ny = ny_glob / topo->dims[1];
+
+    // Adjust for remainder
+    if (topo->coords[0] < (nx_glob % topo->dims[0])) local_nx++;
+    if (topo->coords[1] < (ny_glob % topo->dims[1])) local_ny++;
+
+    if (topo->rank ==0){
+      printf("Rank %d: Global dimensions: %dx%d, Local dimensions: %dx%d\n",
+            topo->cart_rank, nx_glob, ny_glob, local_nx, local_ny);
+      fflush(stdout);
+    }
+
+    // Allocate other fields with correct dimensions
+    all_data->eta = malloc(sizeof(data_t));
+    all_data->u = malloc(sizeof(data_t));
+    all_data->v = malloc(sizeof(data_t));
+    all_data->h_interp = malloc(sizeof(data_t));
+
+    if (!all_data->eta || !all_data->u || !all_data->v || !all_data->h_interp) {
+        fprintf(stderr, "Error: Failed to allocate data structures\n");
+        free_all_data(all_data);
+        return NULL;
+    }
+
+    // Initialize local fields with correct dimensions
+    // eta field
+    if (init_data(all_data->eta, local_nx, local_ny, 
+                  param->dx, param->dy, 0.0, 1)) {
+        fprintf(stderr, "Error: Failed to initialize eta\n");
+        free_all_data(all_data);
+        return NULL;
+    }
+
+    // u field (one more point in x direction)
+    if (init_data(all_data->u, local_nx + 1, local_ny, 
+                  param->dx, param->dy, 0.0, 1)) {
+        fprintf(stderr, "Error: Failed to initialize u\n");
+        free_all_data(all_data);
+        return NULL;
+    }
+
+    // v field (one more point in y direction)
+    if (init_data(all_data->v, local_nx, local_ny + 1, 
+                  param->dx, param->dy, 0.0, 1)) {
+        fprintf(stderr, "Error: Failed to initialize v\n");
+        free_all_data(all_data);
+        return NULL;
+    }
+
+    // h_interp field
+    if (init_data(all_data->h_interp, local_nx, local_ny, 
+                  param->dx, param->dy, 0.0, 0)) {
+        fprintf(stderr, "Error: Failed to initialize h_interp\n");
+        free_all_data(all_data);
+        return NULL;
+    }
+
+    return all_data;
 }
 

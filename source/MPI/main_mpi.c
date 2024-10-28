@@ -78,89 +78,71 @@ int main(int argc, char **argv) {
         update_eta(param, &all_data, gdata, &topo);
         update_velocities(param, &all_data, gdata, &topo);
 
-        MPI_Barrier(topo.cart_comm);
-
         // Gather data from processes
         if (param.sampling_rate && !(n % param.sampling_rate)) {
+            data_t *output_data[] = {all_data->eta, all_data->u, all_data->v};
+            double *receive_buffers[] = {gdata->receive_data_eta,
+                                      gdata->receive_data_u,
+                                      gdata->receive_data_v};
+            int *recv_sizes[] = {gdata->recv_size_eta,
+                              gdata->recv_size_u,
+                              gdata->recv_size_v};
+            int *displacements[] = {gdata->displacements_eta,
+                                  gdata->displacements_u,
+                                  gdata->displacements_v};
 
-          data_t *output_data[] = {all_data->eta, all_data->u, all_data->v};
-          double *receive_buffers[] = {gdata->receive_data_eta,
-                                    gdata->receive_data_u,
-                                    gdata->receive_data_v};
-          int *recv_sizes[] = {gdata->recv_size_eta,
-                            gdata->recv_size_u,
-                            gdata->recv_size_v};
-          int *displacements[] = {gdata->displacements_eta,
-                                gdata->displacements_u,
-                                gdata->displacements_v};
+            for (int field = 0; field < 3; field++) {
 
-          for (int field = 0; field < 3; field++) {
               int send_size = output_data[field]->nx * output_data[field]->ny;
-        
+              MPI_Gatherv(output_data[field]->vals, send_size, MPI_DOUBLE, receive_buffers[field],
+                          recv_sizes[field], displacements[field], MPI_DOUBLE, 0, topo.cart_comm);
 
-              MPI_Barrier(topo.cart_comm);
 
-              int error = MPI_Gatherv(
-                  output_data[field]->vals,
-                  send_size,
-                  MPI_DOUBLE,
-                  receive_buffers[field],
-                  recv_sizes[field],
-                  displacements[field],
-                  MPI_DOUBLE,
-                  0,
-                  topo.cart_comm
-              );
-
-              if (error != MPI_SUCCESS) {
-                  char error_string[MPI_MAX_ERROR_STRING];
-                  int len;
-                  MPI_Error_string(error, error_string, &len);
-                  fprintf(stderr, "Process %d: MPI_Gatherv failed: %s\n", topo.cart_rank, error_string);
-                  MPI_Abort(topo.cart_comm, error);
-              }
-
-              MPI_Barrier(topo.cart_comm);
-
-              // Réorganisation des données sur le processus 0
+              // Reorganize data on rank 0
               if (topo.cart_rank == 0) {
-                  int local_nx = output_data[field]->nx;
-                  int local_ny = output_data[field]->ny;
-                  
+                  const int nx_gathered = nx_glob;
+                  const int ny_gathered = ny_glob;
+
+                  // Reinit output array for this field
+                  memset(gdata->gathered_output[field].vals, 0, 
+                        nx_gathered * ny_gathered * sizeof(double));
+
                   for (int r = 0; r < topo.nb_process; r++) {
-                      int proc_i = r % topo.dims[0];
-                      int proc_j = r / topo.dims[0];
-                      int start_i = proc_i * local_nx;
-                      int start_j = proc_j * local_ny;
+
+                      int coords[2];
+                      MPI_Cart_coords(topo.cart_comm, r, 2, coords);
+                      int local_nx = RANK_NX(gdata, r);
+                      int local_ny = RANK_NY(gdata, r);
+                      int global_start_i = START_I(gdata, r);
+                      int global_start_j = START_J(gdata, r);
 
                       for (int j = 0; j < local_ny; j++) {
                           for (int i = 0; i < local_nx; i++) {
-                              int global_i = start_i + i;
-                              int global_j = start_j + j;
-                              
-                              if (global_i < gdata->gathered_output[field].nx && 
-                                  global_j < gdata->gathered_output[field].ny) {
-                                  
-                                  int src_idx = displacements[field][r] + j * local_nx + i;
-                                  int dst_idx = global_j * gdata->gathered_output[field].nx + global_i;
-                                  
-                                  if (src_idx < recv_sizes[field][r] && 
-                                      dst_idx < gdata->gathered_output[field].nx * gdata->gathered_output[field].ny) {
-                                      gdata->gathered_output[field].vals[dst_idx] = receive_buffers[field][src_idx];
-                                  }
-                              }
+                              int global_i = global_start_i + i;
+                              int global_j = global_start_j + j;
+
+                              int src_idx = j * local_nx + i;  
+                              int src_with_displacement = displacements[field][r] + src_idx;
+                              int dst_idx = global_j * nx_gathered + global_i;
+
+                              gdata->gathered_output[field].vals[dst_idx] = 
+                                  receive_buffers[field][src_with_displacement];
                           }
                       }
                   }
+
+                  gdata->gathered_output[field].nx = nx_gathered;
+                  gdata->gathered_output[field].ny = ny_gathered;
+                  gdata->gathered_output[field].dx = param.dx;
+                  gdata->gathered_output[field].dy = param.dy;
               }
           }
-           if (topo.cart_rank == 0) { 
+
+            if (topo.cart_rank == 0) { 
                 write_data_vtk(&(gdata->gathered_output), "water elevation", 
                               param.output_eta_filename, n);
             }
-      }
-
-        MPI_Barrier(topo.cart_comm);
+        }
     }
     
   // Clean up all variables
@@ -171,7 +153,6 @@ int main(int argc, char **argv) {
   cleanup_mpi_topology(&topo);
 
   MPI_Finalize();
-  printf("Terminated.\n");
 
   return 0;
 }
