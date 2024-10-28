@@ -32,12 +32,12 @@
 
 
 // To obtain number of nodes and limits of rank
-#define RANK_NX(gdata, rank) ((*gdata)->rank_glob[rank][0].n)
-#define RANK_NY(gdata, rank) ((*gdata)->rank_glob[rank][1].n)
-#define START_I(gdata, rank) ((*gdata)->rank_glob[rank][0].start)
-#define END_I(gdata, rank)   ((*gdata)->rank_glob[rank][0].end)
-#define START_J(gdata, rank) ((*gdata)->rank_glob[rank][1].start)
-#define END_J(gdata, rank)   ((*gdata)->rank_glob[rank][1].end)
+#define RANK_NX(gdata, rank) ((gdata)->rank_glob[rank][0].n)
+#define RANK_NY(gdata, rank) ((gdata)->rank_glob[rank][1].n)
+#define START_I(gdata, rank) ((gdata)->rank_glob[rank][0].start)
+#define END_I(gdata, rank)   ((gdata)->rank_glob[rank][0].end)
+#define START_J(gdata, rank) ((gdata)->rank_glob[rank][1].start)
+#define END_J(gdata, rank)   ((gdata)->rank_glob[rank][1].end)
 
 
 /*-------------------*/
@@ -97,10 +97,16 @@ typedef struct {
 
 typedef struct {
     data_t *gathered_output;
-    double *receive_data;
+    double *receive_data_eta;
+    double *receive_data_u;
+    double *receive_data_v;
     limit_t **rank_glob;
-    int *recv_size;
-    int *displacements;
+    int *recv_size_eta;
+    int *recv_size_u;
+    int *recv_size_v;
+    int *displacements_eta;
+    int *displacements_u;
+    int *displacements_v;
 } gather_data_t;
 
 
@@ -137,9 +143,9 @@ void interp_bathy(int nx,
                   const parameters_t param,
                   all_data_t *all_data);
 
-void cleanup(all_data_t *all_data, parameters_t *param, MPITopology *topo, gather_data_t *gdata);
+void cleanup(parameters_t *param, MPITopology *topo, gather_data_t *gdata);
 
-all_data_t* init_all_data(const parameters_t *param);
+all_data_t* init_all_data(const parameters_t *param, MPITopology *topo);
 
 int initialize_mpi_topology(int argc, char **argv, MPITopology *topo);
 
@@ -181,12 +187,7 @@ int write_manifest_vtk(const char *filename,
                        int sampling_rate);
 
 
-int init_data(data_t *data, 
-              int nx, 
-              int ny, 
-              double dx, 
-              double dy, 
-              double val);
+int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, int has_edges);
 
 double get_value_MPI(data_t *data, 
                      int i, 
@@ -203,5 +204,9 @@ double set_value_MPI(data_t *data,
 
 
 void free_data(data_t *data, int has_edges);
+
+void free_all_data(all_data_t *all_data);
+
+void cleanup_mpi_topology(MPITopology *topo);
 
 #endif // SHALLOW_H

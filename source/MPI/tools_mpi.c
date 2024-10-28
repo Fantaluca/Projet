@@ -212,32 +212,51 @@ int write_manifest_vtk(const char *filename, double dt, int nt,
   return 0;
 }
 
-int init_data(data_t *data, int nx, int ny, double dx, double dy,
-              double val)
-{
+int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, int has_edges) {
   data->nx = nx;
   data->ny = ny;
   data->dx = dx;
   data->dy = dy;
-  data->vals = (double*)malloc(nx * ny * sizeof(double));
-  if(!data->vals){
-    printf("Error: Could not allocate data\n");
-    return 1;
+  
+  // Allouer le tableau principal
+  data->vals = malloc(nx * ny * sizeof(double));
+  if (data->vals == NULL) return 1;
+  
+  // Initialiser les valeurs
+  for (int i = 0; i < nx * ny; i++) {
+      data->vals[i] = val;
   }
-  for(int i = 0; i < nx * ny; i++) data->vals[i] = val;
+
+  // Initialiser edge_vals si nécessaire
+  if (has_edges) {
+      data->edge_vals = malloc(NEIGHBOR_NUM * sizeof(double*));
+      if (data->edge_vals == NULL) {
+          free(data->vals);
+          return 1;
+      }
+
+      // Allouer la mémoire pour chaque bord
+      for (int i = 0; i < NEIGHBOR_NUM; i++) {
+          // Pour LEFT/RIGHT, la taille est ny
+          // Pour UP/DOWN, la taille est nx
+          int size = (i == LEFT || i == RIGHT) ? ny : nx;
+          data->edge_vals[i] = malloc(size * sizeof(double));
+          if (data->edge_vals[i] == NULL) {
+              // Nettoyer en cas d'erreur
+              for (int j = 0; j < i; j++) {
+                  free(data->edge_vals[j]);
+              }
+              free(data->edge_vals);
+              free(data->vals);
+              return 1;
+          }
+          // Initialiser les valeurs des bords à 0
+          memset(data->edge_vals[i], 0, size * sizeof(double));
+      }
+  } else {
+      data->edge_vals = NULL;
+  }
+  
   return 0;
 }
 
-    void free_data(data_t *data, int has_edges) {
-        if (data != NULL) {
-            free(data->vals);
-            
-            if (has_edges && data->edge_vals != NULL) {
-                for (int i = 0; i < NEIGHBOR_NUM; i++) {
-                    free(data->edge_vals[i]);
-                }
-                free(data->edge_vals);
-            }
-            free(data);
-        }
-    }
