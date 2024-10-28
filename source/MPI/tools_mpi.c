@@ -141,9 +141,9 @@ int write_data_vtk(data_t **data, const char *name,
 
   char out[MAX_PATH_LENGTH];
  if(step < 0)
-    sprintf(out, "output/%s.vti", filename);
+    sprintf(out, "../../output/%s.vti", filename);
   else
-    sprintf(out, "output/%s_%d.vti", filename, step);
+    sprintf(out, "../../output/%s_%d.vti", filename, step);
 
   FILE *fp = fopen(out, "wb");
   if(!fp) {
@@ -188,7 +188,7 @@ int write_manifest_vtk(const char *filename, double dt, int nt,
                        int sampling_rate)
 {
   char out[MAX_PATH_LENGTH];
-  sprintf(out, "output/%s.pvd", filename);
+  sprintf(out, "../../output/%s.pvd", filename);
 
    FILE *fp = fopen(out, "wb");
   if(!fp) {
@@ -213,50 +213,53 @@ int write_manifest_vtk(const char *filename, double dt, int nt,
 }
 
 int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, int has_edges) {
-  data->nx = nx;
-  data->ny = ny;
-  data->dx = dx;
-  data->dy = dy;
-  
-  // Allouer le tableau principal
-  data->vals = malloc(nx * ny * sizeof(double));
-  if (data->vals == NULL) return 1;
-  
-  // Initialiser les valeurs
-  for (int i = 0; i < nx * ny; i++) {
-      data->vals[i] = val;
-  }
+    printf("Initializing data structure with dimensions %dx%d\n", nx, ny);
+    fflush(stdout);
 
-  // Initialiser edge_vals si nécessaire
-  if (has_edges) {
-      data->edge_vals = malloc(NEIGHBOR_NUM * sizeof(double*));
-      if (data->edge_vals == NULL) {
-          free(data->vals);
-          return 1;
-      }
+    if (data == NULL) return 1;
 
-      // Allouer la mémoire pour chaque bord
-      for (int i = 0; i < NEIGHBOR_NUM; i++) {
-          // Pour LEFT/RIGHT, la taille est ny
-          // Pour UP/DOWN, la taille est nx
-          int size = (i == LEFT || i == RIGHT) ? ny : nx;
-          data->edge_vals[i] = malloc(size * sizeof(double));
-          if (data->edge_vals[i] == NULL) {
-              // Nettoyer en cas d'erreur
-              for (int j = 0; j < i; j++) {
-                  free(data->edge_vals[j]);
-              }
-              free(data->edge_vals);
-              free(data->vals);
-              return 1;
-          }
-          // Initialiser les valeurs des bords à 0
-          memset(data->edge_vals[i], 0, size * sizeof(double));
-      }
-  } else {
-      data->edge_vals = NULL;
-  }
-  
-  return 0;
+    data->nx = nx;
+    data->ny = ny;
+    data->dx = dx;
+    data->dy = dy;
+
+    // Allouer le tableau principal
+    data->vals = calloc(nx * ny, sizeof(double));
+    if (data->vals == NULL) return 1;
+
+    // Initialiser avec la valeur donnée
+    for (int i = 0; i < nx * ny; i++) {
+        data->vals[i] = val;
+    }
+
+    // Allouer les bords si nécessaire
+    if (has_edges) {
+        data->edge_vals = calloc(NEIGHBOR_NUM, sizeof(double*));
+        if (data->edge_vals == NULL) {
+            free(data->vals);
+            return 1;
+        }
+
+        // Allouer chaque bord
+        data->edge_vals[LEFT] = calloc(ny, sizeof(double));
+        data->edge_vals[RIGHT] = calloc(ny, sizeof(double));
+        data->edge_vals[UP] = calloc(nx, sizeof(double));
+        data->edge_vals[DOWN] = calloc(nx, sizeof(double));
+
+        if (!data->edge_vals[LEFT] || !data->edge_vals[RIGHT] ||
+            !data->edge_vals[UP] || !data->edge_vals[DOWN]) {
+            // Nettoyer en cas d'échec
+            for (int i = 0; i < NEIGHBOR_NUM; i++) {
+                if (data->edge_vals[i]) free(data->edge_vals[i]);
+            }
+            free(data->edge_vals);
+            free(data->vals);
+            return 1;
+        }
+    } else {
+        data->edge_vals = NULL;
+    }
+
+    return 0;
 }
 

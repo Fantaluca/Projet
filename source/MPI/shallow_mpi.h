@@ -119,29 +119,29 @@ typedef struct {
 void update_velocities(const parameters_t param,
                        all_data_t **all_data,
                        gather_data_t *gdata,
-                       MPITopology *topo,
-                       neighbour_t *direction);
+                       MPITopology *topo);
 
 void update_eta(const parameters_t param, 
                 all_data_t **all_data,
                 gather_data_t *gdata,
-                MPITopology *topo,
-                neighbour_t *direction);
+                MPITopology *topo);
 
-void boundary_source_condition(int n,
-                               int nx, 
-                               int ny, 
-                               const parameters_t param, 
-                               all_data_t **all_data);
+void boundary_source_condition(int n, int nx_glob, int ny_glob,
+                               const parameters_t param,
+                               all_data_t **all_data,
+                               gather_data_t *gdata,
+                               MPITopology *topo);
 
-double interpolate_data(const data_t *data, 
+double interpolate_data(const data_t *data,
+                        int nx_glob, int ny_glob,
                         double x, 
                         double y);
 
-void interp_bathy(int nx,
-                  int ny, 
-                  const parameters_t param,
-                  all_data_t *all_data);
+void interp_bathy(const parameters_t param,
+                  int nx_glob, int ny_glob,
+                  all_data_t **all_data,
+                  gather_data_t *gdata, 
+                  MPITopology *topo);
 
 void cleanup(parameters_t *param, MPITopology *topo, gather_data_t *gdata);
 
