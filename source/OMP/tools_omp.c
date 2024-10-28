@@ -1,6 +1,6 @@
 #include "shallow_OMP.h"
 
-int read_parameters(struct parameters *param, const char *filename)
+int read_parameters(parameters_t *param, const char *filename)
 {
   printf("read_parameters function\n");
   char full_path[MAX_PATH_LENGTH];
@@ -45,7 +45,7 @@ int read_parameters(struct parameters *param, const char *filename)
   return 0;
 }
 
-void print_parameters(const struct parameters *param)
+void print_parameters(const parameters_t *param)
 {
   printf("Parameters:\n");
   printf(" - grid spacing (dx, dy): %g m, %g m\n", param->dx, param->dy);
@@ -127,16 +127,14 @@ int write_data(const data_t *data, const char *filename, int step)
   return 0;
 }
 
-
-
 int write_data_vtk(const data_t *data, const char *name,
                    const char *filename, int step) {
 
   char out[MAX_PATH_LENGTH];
  if(step < 0)
-    sprintf(out, "output/%s.vti", filename);
+    sprintf(out, "../../output/%s.vti", filename);
   else
-    sprintf(out, "output/%s_%d.vti", filename, step);
+    sprintf(out, "../../output/%s_%d.vti", filename, step);
 
   FILE *fp = fopen(out, "wb");
   if(!fp) {
@@ -181,7 +179,7 @@ int write_manifest_vtk(const char *filename, double dt, int nt,
                        int sampling_rate)
 {
   char out[MAX_PATH_LENGTH];
-  sprintf(out, "output/%s.pvd", filename);
+  sprintf(out, "../../output/%s.pvd", filename);
 
    FILE *fp = fopen(out, "wb");
   if(!fp) {
@@ -224,4 +222,75 @@ int init_data(data_t *data, int nx, int ny, double dx, double dy,
 void free_data(data_t *data)
 {
   free(data->values);
+}
+
+
+all_data_t* init_all_data(const parameters_t *param) {
+  
+    all_data_t* all_data = malloc(sizeof(all_data_t));
+    if (all_data == NULL) {
+        fprintf(stderr, "Error: Failed to allocate all_data\n");
+        return NULL;
+    }
+
+    // Allocate and read bathymetry data
+    all_data->h = malloc(sizeof(data_t));
+    if (all_data->h == NULL) {
+        fprintf(stderr, "Error: Failed to allocate h structure\n");
+        free_all_data(all_data);
+        return NULL;
+    }
+
+    if (read_data(all_data->h, param->input_h_filename)) {
+        fprintf(stderr, "Error: Failed to read bathymetry data\n");
+        free_all_data(all_data);
+        return NULL;
+    }
+
+    // Calculate global domain dimensions
+    double hx = all_data->h->nx * all_data->h->dx;
+    double hy = all_data->h->ny * all_data->h->dy;
+    int nx = floor(hx / param->dx);
+    int ny = floor(hy / param->dy);
+
+     // Allocate other fields with correct dimensions
+    all_data->eta = malloc(sizeof(data_t));
+    all_data->u = malloc(sizeof(data_t));
+    all_data->v = malloc(sizeof(data_t));
+    all_data->h_interp = malloc(sizeof(data_t));
+
+    init_data(all_data->eta, nx, ny, param->dx, param->dy, 0.);
+    init_data(all_data->u, nx + 1, ny, param->dx, param->dy, 0.);
+    init_data(all_data->v, nx, ny + 1, param->dx, param->dy, 0.);
+    init_data(all_data->h_interp, nx, ny, param->dx, param->dy, 0.);
+
+   
+
+    return all_data;
+}
+
+void print_progress(int current_step, int total_steps, double start_time) {
+
+    if (current_step > 0 && 
+        (current_step % (total_steps / 10)) == 0) {
+            
+        double time_elapsed = GET_TIME() - start_time;
+        double estimated_remaining = (total_steps - current_step) * time_elapsed / current_step;
+        
+        printf("Computing step %d/%d (ETA: %.2f seconds)     \r", 
+               current_step, total_steps, estimated_remaining);
+        fflush(stdout);
+    }
+}
+
+void free_all_data(all_data_t* all_data){
+
+    free_data(all_data->h_interp);
+    free_data(all_data->eta);
+    free_data(all_data->u);
+    free_data(all_data->v);
+    free_data(all_data->h);
+
+    free(all_data);
+  
 }

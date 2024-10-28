@@ -16,7 +16,7 @@
 #endif
 
 // Define macros
-#define INPUT_DIR "input_data/base_case/"
+#define INPUT_DIR "../../input_data/base_case/"
 #define MAX_PATH_LENGTH 512
 
 #ifndef M_PI
@@ -30,7 +30,7 @@
 /* Define structures */
 /*-------------------*/
 
-struct parameters {
+typedef struct {
     double dx, dy, dt, max_t;
     double g, gamma;
     int source_type;
@@ -39,7 +39,7 @@ struct parameters {
     char output_eta_filename[MAX_PATH_LENGTH];
     char output_u_filename[MAX_PATH_LENGTH];
     char output_v_filename[MAX_PATH_LENGTH];
-};
+}parameters_t;
 
 typedef struct {
     double *values;
@@ -62,12 +62,12 @@ typedef struct {
 /*------ From "shallow.c" ------*/
 void update_velocities(int nx, 
                       int ny,
-                      const struct parameters param,
+                      const parameters_t param,
                       all_data_t *all_data);
 
 void update_eta(int nx,
                 int ny,
-                const struct parameters param,
+                const parameters_t param,
                 all_data_t *all_data);
 
 double interpolate_data(const data_t *data,
@@ -76,20 +76,20 @@ double interpolate_data(const data_t *data,
 
 void interp_bathy(int nx,
                   int ny, 
-                  const struct parameters param,
+                  const parameters_t param,
                   all_data_t *all_data);
 
-void boundary_condition(int n,
-                       int nx,
-                       int ny,
-                       const struct parameters param,
-                       all_data_t *all_data);
+void boundary_source_condition(int n,
+                               int nx,
+                               int ny,
+                               const parameters_t param,
+                               all_data_t *all_data);
 
 /*------ From "tools.c" ------*/
-int read_parameters(struct parameters *param,
+int read_parameters(parameters_t *param,
                    const char *filename);
 
-void print_parameters(const struct parameters *param);
+void print_parameters(const parameters_t *param);
 
 int read_data(data_t *data,
               const char *filename);
@@ -116,5 +116,11 @@ int init_data(data_t *data,
               double val);
 
 void free_data(data_t *data);
+
+all_data_t* init_all_data(const parameters_t *param);
+
+void print_progress(int current_step, int total_steps, double start_time);
+
+void free_all_data(all_data_t* all_data);
 
 #endif // SHALLOW_H

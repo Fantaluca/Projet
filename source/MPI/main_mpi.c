@@ -74,16 +74,27 @@ int main(int argc, char **argv) {
     // Loop over timestep
     double start = GET_TIME(); 
     for (int n = 0; n < nt; n++) {
+      
       boundary_source_condition(n, nx_glob, ny_glob, param, &all_data, gdata, &topo);
-      print_progress(n, nt, start, &topo);
-
+      
       if (param.sampling_rate && !(n % param.sampling_rate)) 
         gather_and_assemble_data(param, all_data, gdata, &topo, nx_glob, ny_glob, n);
 
+      if (topo.cart_rank == 0 && param.sampling_rate && !(n % param.sampling_rate))
+          write_data_vtk(&(gdata->gathered_output), "water elevation", param.output_eta_filename, n);
+      
       update_eta(param, &all_data, gdata, &topo);
       update_velocities(param, &all_data, gdata, &topo);
+
+      print_progress(n, nt, start, &topo);
       
     }
+
+  if (topo.rank ==0){
+  double time = GET_TIME() - start;
+    printf("\nDone: %g seconds (%g MUpdates/s)\n", time,
+           1e-6 * (double)nx_glob * (double)ny_glob * (double)nt / time);
+  }
         
   // Clean up all variables
   MPI_Barrier(topo.cart_comm);

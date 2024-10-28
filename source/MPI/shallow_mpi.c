@@ -529,10 +529,4 @@ void gather_and_assemble_data(const parameters_t param,
             gdata->gathered_output[field].dy = param.dy;
         }
     }
-
-    // Écriture des données sur le rang 0
-    if (topo->cart_rank == 0) {
-        write_data_vtk(&(gdata->gathered_output), "water elevation",
-                      param.output_eta_filename, timestep);
-    }
 }

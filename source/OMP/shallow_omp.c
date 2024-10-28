@@ -35,7 +35,7 @@ double interpolate_data(const data_t *data, double x, double y) {
     return val;
 }
 
-void update_eta(int nx, int ny, const struct parameters param, all_data_t *all_data) {
+void update_eta(int nx, int ny, const parameters_t param, all_data_t *all_data) {
     #pragma omp parallel for collapse(2)
     for(int i = 0; i < nx; i++) {
         for(int j = 0; j < ny; j++) {
@@ -49,7 +49,7 @@ void update_eta(int nx, int ny, const struct parameters param, all_data_t *all_d
     }
 }
 
-void update_velocities(int nx, int ny, const struct parameters param, all_data_t *all_data) {
+void update_velocities(int nx, int ny, const parameters_t param, all_data_t *all_data) {
     #pragma omp parallel for collapse(2)
     for(int i = 0; i < nx; i++) {
         for(int j = 0; j < ny; j++) {
@@ -68,7 +68,7 @@ void update_velocities(int nx, int ny, const struct parameters param, all_data_t
     }
 }
 
-void boundary_condition(int n, int nx, int ny, const struct parameters param, all_data_t *all_data) {
+void boundary_source_condition(int n, int nx, int ny, const parameters_t param, all_data_t *all_data) {
     double t = n * param.dt;
     if(param.source_type == 1) {
         // sinusoidal velocity on top boundary
@@ -145,7 +145,7 @@ void boundary_condition(int n, int nx, int ny, const struct parameters param, al
     }
 }
 
-void interp_bathy(int nx, int ny, const struct parameters param, all_data_t *all_data) {
+void interp_bathy(int nx, int ny, const parameters_t param, all_data_t *all_data) {
     #pragma omp parallel for collapse(2)
     for(int i = 0; i < nx; i++) {
         for(int j = 0; j < ny; j++) {
@@ -155,92 +155,4 @@ void interp_bathy(int nx, int ny, const struct parameters param, all_data_t *all
             SET(all_data->h_interp, i, j, val);
         }
     }
-}
-
-int main(int argc, char **argv) {
-    if(argc != 2) {
-        printf("Usage: %s parameter_file\n", argv[0]);
-        return 1;
-    }
-
-    // Initialize parameters and h
-    struct parameters param;
-    if(read_parameters(&param, argv[1])) return 1;
-    print_parameters(&param);
-
-    all_data_t all_data;
-    all_data.h = malloc(sizeof(data_t));
-    if(read_data(all_data.h, param.input_h_filename)) return 1;
-
-    // Infer size of domain from input bathymetric data
-    double hx = all_data.h->nx * all_data.h->dx;
-    double hy = all_data.h->ny * all_data.h->dy;
-    int nx = floor(hx / param.dx);
-    int ny = floor(hy / param.dy);
-    if(nx <= 0) nx = 1;
-    if(ny <= 0) ny = 1;
-    int nt = floor(param.max_t / param.dt);
-
-    printf(" - grid size: %g m x %g m (%d x %d = %d grid points)\n",
-           hx, hy, nx, ny, nx * ny);
-    printf(" - number of time steps: %d\n", nt);
-
-    // Initialize variables
-    all_data.eta = malloc(sizeof(data_t));
-    all_data.u = malloc(sizeof(data_t));
-    all_data.v = malloc(sizeof(data_t));
-    all_data.h_interp = malloc(sizeof(data_t));
-    
-    init_data(all_data.eta, nx, ny, param.dx, param.dy, 0.);
-    init_data(all_data.u, nx + 1, ny, param.dx, param.dy, 0.);
-    init_data(all_data.v, nx, ny + 1, param.dx, param.dy, 0.);
-    init_data(all_data.h_interp, nx, ny, param.dx, param.dy, 0.);
-
-    // Interpolate bathymetry
-    interp_bathy(nx, ny, param, &all_data);
-
-    double start = GET_TIME();
-
-    // Loop over timestep
-    for(int n = 0; n < nt; n++) {
-        if(n && (n % (nt / 10)) == 0) {
-            double time_sofar = GET_TIME() - start;
-            double eta = (nt - n) * time_sofar / n;
-            printf("Computing step %d/%d (ETA: %g seconds)     \r", n, nt, eta);
-            fflush(stdout);
-        }
-
-        // output solution
-        if(param.sampling_rate && !(n % param.sampling_rate)) {
-            write_data_vtk(all_data.eta, "water elevation", param.output_eta_filename, n);
-        }
-
-        // impose boundary conditions
-        boundary_condition(n, nx, ny, param, &all_data);
-
-        // Update variables
-        update_eta(nx, ny, param, &all_data);
-        update_velocities(nx, ny, param, &all_data);
-    }
-
-    write_manifest_vtk(param.output_eta_filename, param.dt, nt, param.sampling_rate);
-
-    double time = GET_TIME() - start;
-    printf("\nDone: %g seconds (%g MUpdates/s)\n", time,
-           1e-6 * (double)all_data.eta->nx * (double)all_data.eta->ny * (double)nt / time);
-
-    // Free memory
-    free_data(all_data.h_interp);
-    free_data(all_data.eta);
-    free_data(all_data.u);
-    free_data(all_data.v);
-    free_data(all_data.h);
-    
-    free(all_data.h_interp);
-    free(all_data.eta);
-    free(all_data.u);
-    free(all_data.v);
-    free(all_data.h);
-
-    return 0;
 }
