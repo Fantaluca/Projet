@@ -1,18 +1,23 @@
-# Shallow Equations Solver
+# Shallow Water Equations Solver
 
-This project implements a solver for shallow water equations using the finite difference method. The code is optimized with OpenMP for single-machine parallelism and MPI for distributed computing.
+A high-performance numerical solver for shallow water equations using finite difference methods, optimized for both shared-memory (OpenMP) and distributed (MPI) parallel computing.
 
-## Initial and Boundary Conditions
+## Table of Contents
+- [Overview](#overview)
+- [Mathematical Model](#mathematical-model)
+- [Numerical Implementation](#numerical-implementation)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Building from Source](#building-from-source)
 
-The initial condition is a zero free-surface elevation and zero velocity, i.e. $\eta^0_{i,j} = u^0_{i,j} = v^0_{i,j} = 0, \forall(i, j)$. Note that $i$ and $j$ do not have exactly the same range for the three unknown fields.
+## Overview
 
-Several boundary conditions can be considered. By default:
-- The normal velocity is fixed to zero (impermeable boundaries) on the left, bottom and right sides of the domain:
-  $u^n_{0,j} = 0$, $u^n_{imax,j} = 0$, $v^n_{i,0} = 0, \forall i, j$
-- On the top of the domain, the $v$ component of the velocity is imposed to:
-  $v^n_{i,jmax} = A \sin(2\pi ft), \forall i$
+This project implements a sophisticated solver for shallow water equations, employing finite difference methods with both OpenMP for single-machine parallelism and MPI for distributed computing capabilities. The solver is designed for high performance and scalability across various computing architectures.
 
-## Shallow Water Equations
+## Mathematical Model
+
+### Governing Equations
 
 The shallow water equations solved in this project are:
 
@@ -21,29 +26,37 @@ $$ \frac{\partial \eta}{\partial t} = -\nabla \cdot (h\mathbf{u}) $$
 $$ \frac{\partial \mathbf{u}}{\partial t} = -g\nabla \eta - \gamma\mathbf{u} $$
 
 Where:
-- $\eta$ is the water elevation
-- $\mathbf{u}$ is the depth-averaged velocity vector
-- $h$ is the water depth
-- $g$ is the gravitational acceleration
-- $\gamma$ is a friction coefficient
+- $\eta$ : Water elevation
+- $\mathbf{u}$ : Depth-averaged velocity vector
+- $h$ : Water depth
+- $g$ : Gravitational acceleration
+- $\gamma$ : Friction coefficient
 
-## Numerical Scheme
+### Boundary and Initial Conditions
 
-The solver uses a diamond scheme for spatial discretization and an explicit Euler scheme for time integration.
+**Initial Conditions:**
+- Zero free-surface elevation: $\eta^0_{i,j} = 0$
+- Zero initial velocity: $u^0_{i,j} = v^0_{i,j} = 0, \forall(i, j)$
+
+**Boundary Conditions:**
+- Impermeable boundaries (left, bottom, right):
+  - $u^n_{0,j} = 0$
+  - $u^n_{imax,j} = 0$
+  - $v^n_{i,0} = 0, \forall i, j$
+- Top boundary condition:
+  - $v^n_{i,jmax} = A \sin(2\pi ft), \forall i$
+
+## Numerical Implementation
 
 ### Spatial Discretization
 
-The diamond scheme is employed for spatial discretization. In this scheme:
-- The elevation $\eta$ is computed at the center of the cells
-- The components of the depth-averaged velocity ($u$ and $v$) are computed on the boundaries of the cells
+The solver employs a diamond scheme for spatial discretization:
+- Elevation $\eta$ computed at cell centers
+- Velocity components ($u$, $v$) computed on cell boundaries
 
-![Diamond Scheme](diamond_scheme.png)
+### Temporal Integration
 
-Figure 1: Diamond scheme for spatial discretization.
-
-### Temporal Discretization
-
-Using an explicit Euler scheme, the discretized equations are as follows:
+Using explicit Euler scheme, the discretized equations are:
 
 $$ \frac{\eta_{i,j}^{n+1} - \eta_{i,j}^n}{\Delta t} = -\frac{h(\mathbf{x}^{u_{i+1,j}})u_{i+1,j}^n - h(\mathbf{x}^{u_{i,j}})u_{i,j}^n}{\Delta x} - \frac{h(\mathbf{x}^{v_{i,j+1}})v_{i,j+1}^n - h(\mathbf{x}^{v_{i,j}})v_{i,j}^n}{\Delta y} $$
 
@@ -51,59 +64,78 @@ $$ \frac{u_{i,j}^{n+1} - u_{i,j}^n}{\Delta t} = -g\frac{\eta_{i,j}^{n+1} - \eta_
 
 $$ \frac{v_{i,j}^{n+1} - v_{i,j}^n}{\Delta t} = -g\frac{\eta_{i,j}^{n+1} - \eta_{i,j-1}^{n+1}}{\Delta y} - \gamma v_{i,j}^n $$
 
-Where $\mathbf{x}^{u_{i,j}}$ and $\mathbf{x}^{v_{i,j}}$ are the locations of the $u$ and $v$ components of the velocity, respectively:
+Where velocity component locations are defined as:
 
 $$ \mathbf{x}^{u_{i,j}} := (x_a + i\Delta x, y_a + (j + \frac{1}{2})\Delta y) $$
 
 $$ \mathbf{x}^{v_{i,j}} := (x_a + (i + \frac{1}{2})\Delta x, y_a + j\Delta y) $$
 
-Note: Using implicit Euler instead would lead to evaluating all the velocities ($u$ and $v$) at step $n+1$ instead of $n$ in the right-hand-sides of the first three equations.
-
 ## Features
 
-- Solves shallow water equations using finite differences
-- Optimized with OpenMP for CPU parallelism
-- Utilizes MPI for distributed computing
-- Will soon be able to use GPU acceleration
+- ✨ Advanced finite difference solver for shallow water equations
+- 🚀 OpenMP optimization for shared-memory parallelism
+- 🌐 MPI implementation for distributed computing
+- 📊 Comprehensive output for analysis and visualization
+- 🔄 Flexible boundary condition handling
+- 🎯 GPU acceleration support (coming soon)
 
-## Prerequisites
+## Installation
 
-- A compatible C compiler (e.g., GCC)
-- OpenMP
-- MPI 
+### Prerequisites
 
-## Compilation
+- C compiler (GCC recommended)
+- OpenMP support
+- MPI implementation:
+  - Windows: Microsoft MPI
+  - Linux: OpenMPI or MPICH
 
-### On Windows
+### System Requirements
 
-1. Ensure Microsoft MPI is installed and environment variables are properly configured.
+- Windows 10/11 or Linux-based OS
+- Multi-core processor for OpenMP optimization
+- Network connection for MPI distributed computing
 
-2. Use the `set_MPI.bat` script to compile the code:
-   ```
-   ./set_MPI.bat shallow_MPI_exe shallow_MPI.c tools_MPI.c
-   ```
-   
-   The content of the `set_MPI.bat` file is as follows:
-   ```batch
-   @echo off
-   
-   set MSMPI_INC="C:\Program Files (x86)\Microsoft SDKs\MPI\Include"
-   set MSMPI_LIB64="C:\Program Files (x86)\Microsoft SDKs\MPI\Lib\x64"
-   
-   REM Compilation using gcc
-   gcc -O3 -fopenmp -I%MSMPI_INC% -L%MSMPI_LIB64% -o %1 %2 %3 -lmsmpi -lm
-   
-   REM use 'mpiexec -n <processes_number> %1' to execute code.
-   ```
+## Building from Source
 
-## Execution
+### Windows Build
 
-To run the program with MPI on Windows, use the following command:
+1. Navigate to the desired implementation directory:
+```bash
+cd source/OMP  # or MPI, GPU
 ```
-mpiexec -n 4 .\shallow_MPI_exe.exe
+
+2. Run the compilation script:
+```bash
+./set_omp.bat  # for OpenMP implementation
+# or
+./set_mpi.bat  # for MPI implementation
 ```
-Replace `4` with the number of processes you want to use.
 
-### On Linux
+To adjust thread count, modify `OMP_NUM_THREADS` in the script.
 
-TO DO
+### Linux Build
+
+1. Navigate to the implementation directory:
+```bash
+cd source/OMP  # or MPI, GPU
+```
+
+2. Execute the build script:
+```bash
+./set_omp.sh  # for OpenMP implementation
+# or
+./set_mpi.sh  # for MPI implementation
+```
+
+To configure process count, modify `NB_PROC` in the script.
+
+#### Custom MPI Installation
+
+For non-standard MPI installations, uncomment and modify the following in the `.sh` script:
+```bash
+# Define MPI paths
+export MPI_ROOT=/usr/local/mpi
+export MPI_INCLUDE="$MPI_ROOT/include"
+export MPI_LIB="$MPI_ROOT/lib"
+```
+
