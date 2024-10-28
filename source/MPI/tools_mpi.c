@@ -2,7 +2,7 @@
 
 
 
-int read_parameters(struct parameters *param, const char *filename)
+int read_parameters(parameters_t *param, const char *filename)
 {
 
   char full_path[MAX_PATH_LENGTH];
@@ -47,7 +47,7 @@ int read_parameters(struct parameters *param, const char *filename)
   return 0;
 }
 
-void print_parameters(const struct parameters *param)
+void print_parameters(const parameters_t *param)
 {
   printf("Parameters:\n");
   printf(" - grid spacing (dx, dy): %g m, %g m\n", param->dx, param->dy);
@@ -228,7 +228,16 @@ int init_data(data_t *data, int nx, int ny, double dx, double dy,
   return 0;
 }
 
-void free_data(data_t *data)
-{
-  free(data->vals);
-}
+    void free_data(data_t *data, int has_edges) {
+        if (data != NULL) {
+            free(data->vals);
+            
+            if (has_edges && data->edge_vals != NULL) {
+                for (int i = 0; i < NEIGHBOR_NUM; i++) {
+                    free(data->edge_vals[i]);
+                }
+                free(data->edge_vals);
+            }
+            free(data);
+        }
+    }

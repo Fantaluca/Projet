@@ -12,26 +12,41 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    printf("debut main\n");
+
     //---------------------------------//
     // INITIALIZE MPI, PARAMS AND DATA //
     //---------------------------------//
+
+    
+
+    // Create MPI logic topology
     MPITopology topo;
     if (initialize_mpi_topology(argc, argv, &topo)) {
       MPI_Finalize();
       return 1;
     }
+    printf("apres topology\n");
+
 
     // Allocate params
-    struct parameters param;
+    parameters_t param;
     if (read_parameters(&param, argv[1])) return 1;
+    printf("apres read_parameters\n");
+
 
     // Allocate all_data
     all_data_t* all_data = init_all_data(&param);
     if (all_data == NULL) return 1;
+    printf("apres init_all_data\n");
 
     // Allocate bathymetry
     if (read_data(all_data->h, param.input_h_filename)) return 1;
+    printf("apres read_data\n");
+
     if (topo.cart_rank == 0) print_parameters(&param);
+    printf("apres print_parameters\n");
+    
 
     // Infer size of domain from input bathymetric data
     double hx = all_data->h->nx * all_data->h->dx;
@@ -47,12 +62,24 @@ int main(int argc, char **argv) {
     // INITIALIZE COMMUNICATING VARIABLES FOR MPI PROCESSES //
     //------------------------------------------------------//
     neighbour_t direction[NEIGHBOR_NUM];
-    gather_data_t *gdata = {0};  
-    if(initialize_gather_structures(&topo, &gdata, nx, ny, param.dx, param.dy)) {
+    gather_data_t *gdata = malloc(sizeof(gather_data_t));
+
+    if (gdata == NULL) {
+        fprintf(stderr, "Failed to allocate gdata\n");
         MPI_Abort(topo.cart_comm, MPI_ERR_NO_MEM);
         return 1;
     }
 
+    memset(gdata, 0, sizeof(gather_data_t)); // init struct at 0
+
+    if(initialize_gather_structures(&topo, gdata, nx, ny, param.dx, param.dy)) {
+        free(gdata);  
+        MPI_Abort(topo.cart_comm, MPI_ERR_NO_MEM);
+        return 1;
+    } 
+    printf("apres initialize_gather_structures\n");
+
+    
     double start = GET_TIME(); 
     // Loop over timestep
     for (int n = 0; n < nt; n++) {
@@ -77,34 +104,32 @@ int main(int argc, char **argv) {
         
         for (int i = 0; i < 3; i++) {
 
-          
-          /*
+
           int gatherv_result = MPI_Gatherv(output_data[i]->vals, send_size, MPI_DOUBLE, 
-                                          receive_data, recv_size, displacements, MPI_DOUBLE, 
-                                          0, cart_comm);
+                                          gdata->receive_data, gdata->recv_size, gdata->displacements, MPI_DOUBLE, 
+                                          0, topo.cart_comm);
           
           
           if (gatherv_result != MPI_SUCCESS) {
               char error_string[MPI_MAX_ERROR_STRING];
               int length_of_error_string;
               MPI_Error_string(gatherv_result, error_string, &length_of_error_string);
-              printf("Rank %d: MPI_Gatherv failed: %s\n", cart_rank, error_string);
-              MPI_Abort(cart_comm, gatherv_result);
+              printf("Rank %d: MPI_Gatherv failed: %s\n", topo.cart_rank, error_string);
+              MPI_Abort(topo.cart_comm, gatherv_result);
           }
           
-
    
-          if (cart_rank == 0) {
-            for (int r = 0; r < nb_process; r++) {
-              for (int j = 0; j < RANK_NY(r); j++) {
-                for (int i = 0; i < RANK_NX(r); i++) {
-                  int global_i = START_I(r) + i;
-                  int global_j = START_J(r) + j;
-                  int local_index = j * RANK_NX(r) + i;
+          if (topo.cart_rank == 0) {
+            for (int r = 0; r < topo.nb_process; r++) {
+              for (int j = 0; j < RANK_NY(&gdata, r); j++) {
+                for (int i = 0; i < RANK_NX(&gdata, r); i++) {
+                  int global_i = START_I(&gdata, r) + i;
+                  int global_j = START_J(&gdata, r) + j;
+                  int local_index = j * RANK_NX(&gdata, r) + i;
                   int global_index = global_j * nx + global_i;
 
-                  gathered_output->vals[global_index] = 
-                  receive_data[displacements[r] + local_index];
+                  gdata->gathered_output->vals[global_index] = 
+                  gdata->receive_data[gdata->displacements[r] + local_index];
                 }
               }
             }
@@ -112,45 +137,43 @@ int main(int argc, char **argv) {
             //write_data_vtk(&u, "x velocity", param.output_u_filename, n);
             //write_data_vtk(&v, "y velocity", param.output_v_filename, n);
           }
-        
-        */
         }
         printf("Exiting sampling block\n");
       }
-      
-      
+           
 
       // Update variables
       //printf("Before update_eta\n");
-      //update_eta(param, &all_data, rank_glob, cart_rank, cart_comm, direction);
+      update_eta(param, &all_data, gdata, &topo, direction);
       //printf("After update_eta\n");
       
       //printf("Before update_velocities\n");
-      ////update_velocities(param, &all_data, rank_glob, cart_rank, cart_comm, direction);
+      update_velocities(param, &all_data, gdata, &topo, direction);
       //printf("After update_velocities\n");
       
       //printf("Iteration %d end\n", n);
       }
+    
       
       
-
+   
     // Clean up
-    /*
-    if (cart_rank == 0) {
+    
+    if (topo.cart_rank == 0) {
         printf("Start clean up\n");
-        cleanup(all_data, &param, cart_rank, nb_process, gathered_output, receive_data, rank_glob, recv_size, displacements);
+        cleanup(all_data, &param, &topo, gdata);
         printf("End clean up \n");
         printf("Start MPI_finalized\n");
     }
-    */
 
-      MPI_Finalize();
-      // free_all_data(all_data_t* all_data)
+      
 
     if (topo.cart_rank == 0) {
         printf("End MPI_finalized\n");
         printf("finished\n");
     }
 
+  
+  MPI_Finalize();
   return 0;
 }

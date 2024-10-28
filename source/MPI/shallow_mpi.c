@@ -1,76 +1,49 @@
-#include "shallow_MPI.h"
+#include "shallow_mpi.h"
 
 #undef MPI_STATUSES_IGNORE
 #define MPI_STATUSES_IGNORE (MPI_Status *)0 // temporary to get rid of "warning: 'MPI_Waitall' accessing 20 bytes in a region of size 0 [-Wstringop-overflow=]"
 
-void cleanup(all_data_t *all_data, struct parameters *param, int cart_rank, int size, 
-             data_t *gathered_output, double *receive_data, limit_t **rank_glob, 
-             int *recv_size, int *displacements) {
-    
-    // Free all_data structure
+
+void cleanup(all_data_t *all_data, parameters_t *param, MPITopology *topo, gather_data_t *gdata) {
+
+    // Libération de la structure all_data
     if (all_data != NULL) {
-        if (all_data->u != NULL) {
-            free(all_data->u->vals);
-            if (all_data->u->edge_vals != NULL) {
-                for (int i = 0; i < NEIGHBOR_NUM; i++) {
-                    free(all_data->u->edge_vals[i]);
-                }
-                free(all_data->u->edge_vals);
-            }
-            free(all_data->u);
-        }
-        if (all_data->v != NULL) {
-            free(all_data->v->vals);
-            if (all_data->v->edge_vals != NULL) {
-                for (int i = 0; i < NEIGHBOR_NUM; i++) {
-                    free(all_data->v->edge_vals[i]);
-                }
-                free(all_data->v->edge_vals);
-            }
-            free(all_data->v);
-        }
-        if (all_data->eta != NULL) {
-            free(all_data->eta->vals);
-            if (all_data->eta->edge_vals != NULL) {
-                for (int i = 0; i < NEIGHBOR_NUM; i++) {
-                    free(all_data->eta->edge_vals[i]);
-                }
-                free(all_data->eta->edge_vals);
-            }
-            free(all_data->eta);
-        }
-        if (all_data->h != NULL) {
-            free(all_data->h->vals);
-            free(all_data->h);
-        }
-        if (all_data->h_interp != NULL) {
-            free(all_data->h_interp->vals);
-            free(all_data->h_interp);
-        }
+        // Libérer u, v, eta avec leurs edge_vals
+        free_data(all_data->u, 1);
+        free_data(all_data->v, 1);
+        free_data(all_data->eta, 1);
+        
+        // Libérer h et h_interp qui n'ont pas d'edge_vals
+        free_data(all_data->h, 0);
+        free_data(all_data->h_interp, 0);
+        
         free(all_data);
     }
 
-    // Free parameters (if dynamically allocated)
-    // Note: In your current structure, param doesn't need to be freed as it's not dynamically allocated
-
-    // Free MPI-related allocations (only for rank 0)
-    if (cart_rank == 0) {
-        if (gathered_output != NULL) {
-            free(gathered_output->vals);
-            free(gathered_output);
+    // Libération des structures MPI (seulement pour le processus principal)
+    if (topo != NULL && topo->cart_rank == 0 && gdata != NULL) {
+        // Libérer gathered_output
+        if (gdata->gathered_output != NULL) {
+            free(gdata->gathered_output->vals);
+            free(gdata->gathered_output);
         }
-        free(receive_data);
-        if (rank_glob != NULL) {
-            for (int r = 0; r < size; r++) {
-                free(rank_glob[r]);
+        
+        // Libérer les autres données de gather
+        free(gdata->receive_data);
+        
+        if (gdata->rank_glob != NULL) {
+            for (int r = 0; r < topo->nb_process; r++) {
+                free(gdata->rank_glob[r]);
             }
-            free(rank_glob);
+            free(gdata->rank_glob);
         }
-        free(recv_size);
-        free(displacements);
+        
+        free(gdata->recv_size);
+        free(gdata->displacements);
     }
-}
 
+    // Note: parameters_t n'est pas libéré car il n'est pas alloué dynamiquement
+}
 
 
 double get_value_MPI(data_t *data, 
@@ -136,7 +109,6 @@ double set_value_MPI(data_t *data,
                      gather_data_t *gdata,
                      MPITopology *topo,
                      double val) {
-
                       
   int i_rank = i - START_I(&gdata, topo->cart_rank); 
   int j_rank = j - START_J(&gdata, topo->cart_rank); 
@@ -163,7 +135,7 @@ double set_value_MPI(data_t *data,
 }
 
 
-void update_eta(const struct parameters param, 
+void update_eta(const parameters_t param, 
                 all_data_t **all_data,
                 gather_data_t *gdata,
                 MPITopology *topo,
@@ -192,7 +164,7 @@ void update_eta(const struct parameters param,
   double *send_v =  malloc(ny * sizeof(double));;
 
   for (int j_rank = 0; j_rank < ny; j_rank++) 
-    send_u[j_rank] = get_value_MPI((*all_data)->u, i_end, j_start+j_rank, gdata, topo);
+    send_u[j_rank] = get_value_MPI((*all_data)->u, i_start, j_start+j_rank, gdata, topo);
 
   for (int i_rank = 0; i_rank < nx; i_rank++) 
     send_v[i_rank] = get_value_MPI((*all_data)->u, i_start+i_rank, j_end, gdata, topo);
@@ -202,67 +174,22 @@ void update_eta(const struct parameters param,
   MPI_Isend(send_v, nx, MPI_DOUBLE, direction[DOWN], 101, topo->cart_comm, &request_recv[0]);
 
 
-
-  // Updating (inside domain)
+  // Update eta
   double dx = param.dx;
   double dy = param.dy;
   
-  for (int i_rank = i_start; i_rank < i_end; i_rank++) {
-    for (int j_rank = j_start+1; j_rank <= j_end; j_rank++) {
+  for (int i = i_start; i <= i_end; i++) {
+    for (int j = j_start; j <= j_end; j++) {
 
-      int i_local = i_rank - i_start;
-      int j_local = j_rank - j_start;
-
-      double h_ij = GET((*all_data)->h_interp, i_local, j_local);
+      double h_ij = get_value_MPI((*all_data)->h_interp, i, j, gdata, topo);
       double c1 = param.dt * h_ij;
       
-      double du_dx = (GET((*all_data)->u, i_local + 1, j_local) - GET((*all_data)->u, i_local, j_local))/dx;
-      double dv_dy = (GET((*all_data)->v, i_local, j_local + 1) - GET((*all_data)->v, i_local, j_local))/dy;
+      double du_dx = (get_value_MPI((*all_data)->u, i+1, j, gdata, topo) - get_value_MPI((*all_data)->u, i, j, gdata, topo))/dx;
+      double dv_dy = (get_value_MPI((*all_data)->v, i, j+1, gdata, topo) - get_value_MPI((*all_data)->v , i, j, gdata, topo))/dy;
+      double eta_ij = get_value_MPI((*all_data)->eta, i, j, gdata, topo) - c1 * (du_dx + dv_dy);
       
-      double eta_ij = GET((*all_data)->eta, i_local, j_local) - c1 * (du_dx + dv_dy);
-      
-      SET((*all_data)->eta, i_local, j_local, eta_ij);
+      set_value_MPI((*all_data)->eta, i, j, gdata, topo, eta_ij);
     }
-  }
-
-  // Wait for received data
-  MPI_Waitall(2, request_recv, MPI_STATUSES_IGNORE);
-
-  // Update (right boundary)
-  int i_rank = i_end;
-  for (int j_rank = j_start; j_rank <= j_end; j_rank++) {
-      int i_local = i_rank - i_start;
-      int j_local = j_rank - j_start;
-      
-      double h_ij = GET((*all_data)->h_interp, i_local, j_local);
-      double c1 = param.dt * h_ij;
-      
-      double du_dx = ((*all_data)->u->edge_vals[RIGHT][j_local] - GET((*all_data)->u, i_local, j_local)) / dx;
-
-      if 
-
-      double dv_dy = (GET((*all_data)->v, i_local, j_local + 1) - GET((*all_data)->v, i_local, j_local)) / dy;
-      
-      double eta_ij = GET((*all_data)->eta, i_local, j_local) - c1 * (du_dx + dv_dy);
-      
-      SET((*all_data)->eta, i_local, j_local, eta_ij);
-  }
-
-  // Update (top boundary)
-  int j_rank = j_start;
-  for (int i_rank = i_start; i_rank <= i_end; i_rank++) {
-      int i_local = i_rank - i_start;
-      int j_local = j_rank - j_start;
-      
-      double h_ij = GET((*all_data)->h_interp, i_local, j_local);
-      double c1 = param.dt * h_ij;
-      
-      double du_dx = (GET((*all_data)->u, i_local + 1, j_local) - GET((*all_data)->u, i_local, j_local)) / dx;
-      double dv_dy = ((*all_data)->v->edge_vals[UP][i_local] - GET((*all_data)->v, i_local, j_local)) / dy;
-      
-      double eta_ij = GET((*all_data)->eta, i_local, j_local) - c1 * (du_dx + dv_dy);
-      
-      SET((*all_data)->eta, i_local, j_local, eta_ij);
   }
 
   // Wait for sent data to complete
@@ -271,43 +198,43 @@ void update_eta(const struct parameters param,
   free(send_u);
   free(send_v);
 
-
 }
 
-void update_velocities(const struct parameters param,
+void update_velocities(const parameters_t param,
                        all_data_t **all_data,
-                       limit_t **rank_glob,
-                       int cart_rank,
-                       MPI_Comm cart_comm,
+                       gather_data_t *gdata,
+                       MPITopology *topo,
                        neighbour_t *direction) {
 
     MPI_Request request_recv[2];
     MPI_Request request_send[2];
 
     // Find process size (nx,ny) and every (i,j) within
-    int nx = RANK_NX(cart_rank);
-    int i_start = START_I(cart_rank);
-    int i_end = END_I(cart_rank);
-    int ny = RANK_NY(cart_rank);
-    int j_start = START_J(cart_rank);
-    int j_end = END_J(cart_rank);
+    int nx = RANK_NX(&gdata, topo->cart_rank);
+    int i_start = START_I(&gdata, topo->cart_rank);
+    int i_end = END_I(&gdata, topo->cart_rank);
+
+    int ny = RANK_NY(&gdata, topo->cart_rank);
+    int j_start = START_J(&gdata, topo->cart_rank);
+    int j_end = END_J(&gdata, topo->cart_rank);
+
 
     // Receive eta(i-1,j) and eta(i,j-1) from neighbouring processes
-    MPI_Irecv((*all_data)->eta->edge_vals[LEFT], ny, MPI_DOUBLE, direction[LEFT], 200, cart_comm, &request_recv[0]);
-    MPI_Irecv((*all_data)->eta->edge_vals[DOWN], nx, MPI_DOUBLE, direction[DOWN], 201, cart_comm, &request_recv[1]);
+    MPI_Irecv((*all_data)->eta->edge_vals[LEFT], ny, MPI_DOUBLE, direction[LEFT], 200, topo->cart_comm, &request_recv[0]);
+    MPI_Irecv((*all_data)->eta->edge_vals[DOWN], nx, MPI_DOUBLE, direction[DOWN], 201, topo->cart_comm, &request_recv[1]);
 
     // Prepare data to send
     double *send_eta_right = malloc(ny * sizeof(double));
     double *send_eta_up = malloc(nx * sizeof(double));
 
     for (int j_rank = 0; j_rank < ny; j_rank++)
-        send_eta_right[j_rank] = get_value_MPI((*all_data)->eta, i_end, j_start+j_rank, rank_glob, cart_rank, cart_comm);
+        send_eta_right[j_rank] = get_value_MPI((*all_data)->eta, i_end, j_start+j_rank, gdata, topo);
     for (int i_rank = 0; i_rank < nx; i_rank++)
-        send_eta_up[i_rank] = get_value_MPI((*all_data)->eta, i_start+i_rank, j_end, rank_glob, cart_rank, cart_comm);
+        send_eta_up[i_rank] = get_value_MPI((*all_data)->eta, i_start+i_rank, j_end, gdata, topo);
 
     // Send eta(i+1,j) and eta(i,j+1) to neighbouring processes
-    MPI_Isend(send_eta_right, ny, MPI_DOUBLE, direction[RIGHT], 200, cart_comm, &request_send[0]);
-    MPI_Isend(send_eta_up, nx, MPI_DOUBLE, direction[UP], 201, cart_comm, &request_send[1]);
+    MPI_Isend(send_eta_right, ny, MPI_DOUBLE, direction[RIGHT], 200, topo->cart_comm, &request_send[0]);
+    MPI_Isend(send_eta_up, nx, MPI_DOUBLE, direction[UP], 201, topo->cart_comm, &request_send[1]);
 
 
     double dx = param.dx;
@@ -315,65 +242,22 @@ void update_velocities(const struct parameters param,
     double c1 = param.dt * param.g;
     double c2 = param.dt * param.gamma;
 
-    // Update velocities (inside domain)
-    for (int i_rank = i_start+1; i_rank < i_end; i_rank++) {
-        for (int j_rank = j_start+1; j_rank < j_end; j_rank++) {
-            int i_local = i_rank - i_start;
-            int j_local = j_rank - j_start;
+    // Update velocities 
+    for (int i = i_start; i <= i_end; i++) {
+        for (int j = j_start; j < j_end; j++) {
 
-            double eta_ij = GET((*all_data)->eta, i_local, j_local);
-            double eta_imj = GET((*all_data)->eta, i_local - 1, j_local);
-            double eta_ijm = GET((*all_data)->eta, i_local, j_local - 1);
+            double eta_ij = GET((*all_data)->eta, i, j);
+            double eta_imj = GET((*all_data)->eta, i-1, j);
+            double eta_ijm = GET((*all_data)->eta, i, j-1);
 
-            double u_ij = (1. - c2) * GET((*all_data)->u, i_local, j_local)
-                - c1 / dx * (eta_ij - eta_imj);
-            double v_ij = (1. - c2) * GET((*all_data)->v, i_local, j_local)
-                - c1 / dy * (eta_ij - eta_ijm);
+            double u_ij = (1. - c2) * GET((*all_data)->u, i, j)
+                          - c1 / dx * (eta_ij - eta_imj);
+            double v_ij = (1. - c2) * GET((*all_data)->v, i, j)
+                          - c1 / dy * (eta_ij - eta_ijm);
 
-            SET((*all_data)->u, i_local, j_local, u_ij);
-            SET((*all_data)->v, i_local, j_local, v_ij);
+            SET((*all_data)->u, i, j, u_ij);
+            SET((*all_data)->v, i, j, v_ij);
         }
-    }
-
-    // Wait for received data
-    MPI_Waitall(2, request_recv, MPI_STATUSES_IGNORE);
-
-    // Update velocities (left boundary)
-    int i_rank = i_start;
-    for (int j_rank = j_start+1; j_rank < j_end; j_rank++) {
-        int i_local = i_rank - i_start;
-        int j_local = j_rank - j_start;
-
-        double eta_ij = GET((*all_data)->eta, i_local, j_local);
-        double eta_imj = (*all_data)->eta->edge_vals[LEFT][j_local];
-        double eta_ijm = GET((*all_data)->eta, i_local, j_local - 1);
-
-        double u_ij = (1. - c2) * GET((*all_data)->u, i_local, j_local)
-            - c1 / dx * (eta_ij - eta_imj);
-        double v_ij = (1. - c2) * GET((*all_data)->v, i_local, j_local)
-            - c1 / dy * (eta_ij - eta_ijm);
-
-        SET((*all_data)->u, i_local, j_local, u_ij);
-        SET((*all_data)->v, i_local, j_local, v_ij);
-    }
-
-    // Update velocities (bottom boundary)
-    int j_rank = j_start;
-    for (int i_rank = i_start+1; i_rank < i_end; i_rank++) {
-        int i_local = i_rank - i_start;
-        int j_local = j_rank - j_start;
-
-        double eta_ij = GET((*all_data)->eta, i_local, j_local);
-        double eta_imj = GET((*all_data)->eta, i_local - 1, j_local);
-        double eta_ijm = (*all_data)->eta->edge_vals[DOWN][i_local];
-
-        double u_ij = (1. - c2) * GET((*all_data)->u, i_local, j_local)
-            - c1 / dx * (eta_ij - eta_imj);
-        double v_ij = (1. - c2) * GET((*all_data)->v, i_local, j_local)
-            - c1 / dy * (eta_ij - eta_ijm);
-
-        SET((*all_data)->u, i_local, j_local, u_ij);
-        SET((*all_data)->v, i_local, j_local, v_ij);
     }
 
     // Wait for sent data to complete
@@ -425,7 +309,7 @@ double interpolate_data(const data_t *data,
 
 void interp_bathy(int nx,
                   int ny, 
-                  const struct parameters param,
+                  const parameters_t param,
                   all_data_t *all_data) {
 
   for(int i = 0; i < nx; i++){
@@ -443,7 +327,7 @@ void interp_bathy(int nx,
 void boundary_source_condition(int n,
                         int nx, 
                         int ny, 
-                        const struct parameters param, 
+                        const parameters_t param, 
                         all_data_t **all_data) {
     double t = n * param.dt;
     if(param.source_type == 1) {
@@ -484,7 +368,7 @@ void free_all_data(all_data_t* all_data) {
     }
 }
 
-all_data_t* init_all_data(const struct parameters *param) {
+all_data_t* init_all_data(const parameters_t *param) {
 
     all_data_t* all_data = malloc(sizeof(all_data_t));
     if (all_data == NULL) {
@@ -585,9 +469,10 @@ int initialize_mpi_topology(int argc, char **argv, MPITopology *topo) {
     return 0; // Succès
 }
 int initialize_gather_structures(const MPITopology *topo, 
-                               gather_data_t *gdata,
-                               int nx, int ny, 
-                               double dx, double dy) {
+                                 gather_data_t *gdata,
+                                 int nx, int ny, 
+                                 double dx, double dy) {
+
     // Allocation initiale pour tous les rangs
     gdata->recv_size = malloc(sizeof(int) * topo->nb_process);
     gdata->displacements = malloc(sizeof(int) * topo->nb_process);

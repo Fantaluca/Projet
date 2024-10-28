@@ -20,7 +20,7 @@
 /*-------------------*/
 /*   Define Macros   */
 /*-------------------*/
-#define INPUT_DIR "input_data/base_case/"
+#define INPUT_DIR "../../input_data/base_case/"
 #define MAX_PATH_LENGTH 512
 
 #ifndef M_PI
@@ -43,7 +43,16 @@
 /*-------------------*/
 /* Define structures */
 /*-------------------*/
-struct parameters {
+typedef enum {
+  LEFT  = 0,
+  RIGHT = 1,
+  UP = 2,
+  DOWN  = 3,
+  NEIGHBOR_NUM = 4,
+} neighbour_t;
+
+
+typedef struct {
     double dx, dy, dt, max_t;
     double g, gamma;
     int source_type;
@@ -52,15 +61,8 @@ struct parameters {
     char output_eta_filename[MAX_PATH_LENGTH];
     char output_u_filename[MAX_PATH_LENGTH];
     char output_v_filename[MAX_PATH_LENGTH];
-};
+}parameters_t ;
 
-typedef enum {
-  LEFT  = 0,
-  RIGHT = 1,
-  UP = 2,
-  DOWN  = 3,
-  NEIGHBOR_NUM = 4,
-} neighbour_t;
 
 typedef struct {
     int start;
@@ -108,14 +110,13 @@ typedef struct {
 /*---------------------------*/
 
 /*------ From "shallow_MPI.c" ------*/
-void update_velocities(const struct parameters param,
+void update_velocities(const parameters_t param,
                        all_data_t **all_data,
-                       limit_t **rank_glob,
-                       int cart_rank,
-                       MPI_Comm cart_comm,
+                       gather_data_t *gdata,
+                       MPITopology *topo,
                        neighbour_t *direction);
 
-void update_eta(const struct parameters param, 
+void update_eta(const parameters_t param, 
                 all_data_t **all_data,
                 gather_data_t *gdata,
                 MPITopology *topo,
@@ -124,7 +125,7 @@ void update_eta(const struct parameters param,
 void boundary_source_condition(int n,
                                int nx, 
                                int ny, 
-                               const struct parameters param, 
+                               const parameters_t param, 
                                all_data_t **all_data);
 
 double interpolate_data(const data_t *data, 
@@ -133,25 +134,30 @@ double interpolate_data(const data_t *data,
 
 void interp_bathy(int nx,
                   int ny, 
-                  const struct parameters param,
+                  const parameters_t param,
                   all_data_t *all_data);
 
-void cleanup(all_data_t *all_data, struct parameters *param, int cart_rank, int size, 
-             data_t *gathered_output, double *receive_data, limit_t **rank_glob, 
-             int *recv_size, int *displacements);
+void cleanup(all_data_t *all_data, parameters_t *param, MPITopology *topo, gather_data_t *gdata);
+
+all_data_t* init_all_data(const parameters_t *param);
+
+int initialize_mpi_topology(int argc, char **argv, MPITopology *topo);
+
+int initialize_gather_structures(const MPITopology *topo, 
+                               gather_data_t *gdata,
+                               int nx, int ny, 
+                               double dx, double dy);
 
 
 
 /*------ From "tools.c" ------*/
 
-all_data_t* allocate_all_data();
-
-int read_parameters(struct parameters *param,
+int read_parameters(parameters_t *param,
                     const char *filename);
 
 
 
-void print_parameters(const struct parameters *param);
+void print_parameters(const parameters_t *param);
 
 
 int read_data(data_t *data, 
@@ -196,6 +202,6 @@ double set_value_MPI(data_t *data,
                      double val);
 
 
-void free_data(data_t *data);
+void free_data(data_t *data, int has_edges);
 
 #endif // SHALLOW_H
