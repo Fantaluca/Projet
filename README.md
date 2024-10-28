@@ -1,7 +1,3 @@
-# Shallow Water Equations Solver
-
-A high-performance numerical solver for shallow water equations using finite difference methods, optimized for both shared-memory (OpenMP) and distributed (MPI) parallel computing.
-
 ## Table of Contents
 - [Overview](#overview)
 - [Mathematical Model](#mathematical-model)
@@ -12,8 +8,11 @@ A high-performance numerical solver for shallow water equations using finite dif
 - [Building from Source](#building-from-source)
 
 ## Overview
+This project was developed as part of the [INFO0939](https://people.montefiore.uliege.be/geuzaine/INFO0939/) High-Performance Scientific Computing course at the University of Liège. The main objective was to enhance the performance of a finite difference solver for shallow water equations through various parallel computing paradigms:
 
-This project implements a sophisticated solver for shallow water equations, employing finite difference methods with both OpenMP for single-machine parallelism and MPI for distributed computing capabilities. The solver is designed for high performance and scalability across various computing architectures.
+- Shared-memory parallelism using OpenMP
+- Distributed computing using MPI
+- GPU acceleration (upcoming feature)
 
 ## Mathematical Model
 
@@ -72,7 +71,6 @@ $$ \mathbf{x}^{v_{i,j}} := (x_a + (i + \frac{1}{2})\Delta x, y_a + j\Delta y) $$
 
 ## Features
 
-- ✨ Advanced finite difference solver for shallow water equations
 - 🚀 OpenMP optimization for shared-memory parallelism
 - 🌐 MPI implementation for distributed computing
 - 📊 Comprehensive output for analysis and visualization
