@@ -334,11 +334,10 @@ int initialize_mpi_topology(int argc, char **argv, MPITopology *topo) {
     MPI_Cart_shift(topo->cart_comm, 1, 1, &topo->neighbors[DOWN], &topo->neighbors[UP]);
         
     if (topo->rank == 0) {
-        printf("\nRecap of initialization :\n");
-        printf("Total number of processes : %d\n", topo->nb_process);
         printf("Dimensions of the grid : %d x %d\n", topo->dims[0], topo->dims[1]);
         fflush(stdout);
     }
+    
     
     return 0;
 }
@@ -461,3 +460,79 @@ int initialize_gather_structures(const MPITopology *topo,
     return 0;
 }
 
+void gather_and_assemble_data(const parameters_t param,
+                             all_data_t *all_data,
+                             gather_data_t *gdata,
+                             MPITopology *topo,
+                             int nx_glob, int ny_glob,
+                             int timestep) {
+    
+    // Structures de données pour le gathering
+    data_t *output_data[] = {all_data->eta, all_data->u, all_data->v};
+    double *receive_buffers[] = {gdata->receive_data_eta,
+                               gdata->receive_data_u,
+                               gdata->receive_data_v};
+    int *recv_sizes[] = {gdata->recv_size_eta,
+                        gdata->recv_size_u,
+                        gdata->recv_size_v};
+    int *displacements[] = {gdata->displacements_eta,
+                          gdata->displacements_u,
+                          gdata->displacements_v};
+
+    // Gather et assemblage pour chaque champ
+    for (int field = 0; field < 3; field++) {
+        // Gathering des données
+        int send_size = output_data[field]->nx * output_data[field]->ny;
+        MPI_Gatherv(output_data[field]->vals, send_size, MPI_DOUBLE,
+                    receive_buffers[field], recv_sizes[field],
+                    displacements[field], MPI_DOUBLE, 0, topo->cart_comm);
+
+        // Assemblage sur le rang 0
+        if (topo->cart_rank == 0) {
+            const int nx_gathered = nx_glob;
+            const int ny_gathered = ny_glob;
+
+            // Réinitialisation du tableau de sortie
+            memset(gdata->gathered_output[field].vals, 0,
+                  nx_gathered * ny_gathered * sizeof(double));
+
+            // Assemblage des données de chaque processus
+            for (int r = 0; r < topo->nb_process; r++) {
+                int coords[2];
+                MPI_Cart_coords(topo->cart_comm, r, 2, coords);
+                
+                int local_nx = RANK_NX(gdata, r);
+                int local_ny = RANK_NY(gdata, r);
+                int global_start_i = START_I(gdata, r);
+                int global_start_j = START_J(gdata, r);
+
+                // Copie des données locales dans la position globale
+                for (int j = 0; j < local_ny; j++) {
+                    for (int i = 0; i < local_nx; i++) {
+                        int global_i = global_start_i + i;
+                        int global_j = global_start_j + j;
+
+                        int src_idx = j * local_nx + i;
+                        int src_with_displacement = displacements[field][r] + src_idx;
+                        int dst_idx = global_j * nx_gathered + global_i;
+
+                        gdata->gathered_output[field].vals[dst_idx] =
+                            receive_buffers[field][src_with_displacement];
+                    }
+                }
+            }
+
+            // Mise à jour des métadonnées
+            gdata->gathered_output[field].nx = nx_gathered;
+            gdata->gathered_output[field].ny = ny_gathered;
+            gdata->gathered_output[field].dx = param.dx;
+            gdata->gathered_output[field].dy = param.dy;
+        }
+    }
+
+    // Écriture des données sur le rang 0
+    if (topo->cart_rank == 0) {
+        write_data_vtk(&(gdata->gathered_output), "water elevation",
+                      param.output_eta_filename, timestep);
+    }
+}

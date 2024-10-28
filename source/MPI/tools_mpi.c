@@ -65,7 +65,6 @@ void print_parameters(const parameters_t *param)
 
 int read_data(data_t *data, const char *filename)
 {
-  printf(" %s", filename);
   FILE *fp = fopen(filename, "rb");
 
   if(!fp) {
@@ -453,5 +452,20 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
     }
 
     return all_data;
+}
+
+void print_progress(int current_step, int total_steps, double start_time, MPITopology *topo) {
+
+    if (current_step > 0 && 
+        (current_step % (total_steps / 10)) == 0 && 
+        topo->cart_rank == 0) {
+            
+        double time_elapsed = GET_TIME() - start_time;
+        double estimated_remaining = (total_steps - current_step) * time_elapsed / current_step;
+        
+        printf("Computing step %d/%d (ETA: %.2f seconds)     \r", 
+               current_step, total_steps, estimated_remaining);
+        fflush(stdout);
+    }
 }
 

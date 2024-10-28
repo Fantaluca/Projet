@@ -143,10 +143,6 @@ void interp_bathy(const parameters_t param,
                   gather_data_t *gdata, 
                   MPITopology *topo);
 
-void cleanup(parameters_t *param, MPITopology *topo, gather_data_t *gdata);
-
-all_data_t* init_all_data(const parameters_t *param, MPITopology *topo);
-
 int initialize_mpi_topology(int argc, char **argv, MPITopology *topo);
 
 int initialize_gather_structures(const MPITopology *topo, 
@@ -154,6 +150,12 @@ int initialize_gather_structures(const MPITopology *topo,
                                int nx, int ny, 
                                double dx, double dy);
 
+void gather_and_assemble_data(const parameters_t param,
+                             all_data_t *all_data,
+                             gather_data_t *gdata,
+                             MPITopology *topo,
+                             int nx_glob, int ny_glob,
+                             int timestep);
 
 
 /*------ From "tools.c" ------*/
@@ -189,24 +191,17 @@ int write_manifest_vtk(const char *filename,
 
 int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, int has_edges);
 
-double get_value_MPI(data_t *data, 
-                     int i, 
-                     int j, 
-                     gather_data_t *gdata,
-                     MPITopology *topo);
-
-double set_value_MPI(data_t *data, 
-                     int i, 
-                     int j, 
-                     gather_data_t *gdata,
-                     MPITopology *topo,
-                     double val);
-
 
 void free_data(data_t *data, int has_edges);
 
 void free_all_data(all_data_t *all_data);
 
 void cleanup_mpi_topology(MPITopology *topo);
+
+void print_progress(int current_step, int total_steps, double start_time, MPITopology *topo);
+
+void cleanup(parameters_t *param, MPITopology *topo, gather_data_t *gdata);
+
+all_data_t* init_all_data(const parameters_t *param, MPITopology *topo);
 
 #endif // SHALLOW_H
