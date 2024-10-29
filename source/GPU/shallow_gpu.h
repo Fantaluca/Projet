@@ -90,6 +90,8 @@ void boundary_source_condition(int n,
                                const parameters_t param,
                                all_data_t *all_data);
 
+double find_max_abs(const double* values, int size);
+
 /*------ From "tools.c" ------*/
 int read_parameters(parameters_t *param,
                    const char *filename);

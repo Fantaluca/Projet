@@ -35,23 +35,25 @@ int main(int argc, char **argv) {
     // Interpolate bathymetry
     interp_bathy(nx, ny, param, all_data);
 
-    // Initialisation du device GPU et transfert des données
     #pragma omp target enter data \
-        map(to: *all_data->h) \
-        map(alloc: *all_data->h_interp, *all_data->eta, *all_data->u, *all_data->v)
+        map(to: *all_data->h, *all_data->h_interp, *all_data->eta, *all_data->u, *all_data->v)
 
     // Loop over timestep
     double start = GET_TIME();
     for(int n = 0; n < nt; n++) {
        
         // output solution
-        if(param.sampling_rate && !(n % param.sampling_rate)) 
+        if(param.sampling_rate && !(n % param.sampling_rate)){
+            // Synchroniser toutes les données nécessaires avant l'écriture
+            #pragma omp target update from(*all_data->eta, *all_data->u, *all_data->v)
             write_data_vtk(all_data->eta, "water elevation", param.output_eta_filename, n);
+        }
+
 
         boundary_source_condition(n, nx, ny, param, all_data);
         update_eta(nx, ny, param, all_data);
         update_velocities(nx, ny, param, all_data);
-
+       
         print_progress(n, nt, start);
     }
 
@@ -61,10 +63,9 @@ int main(int argc, char **argv) {
     printf("\nDone: %g seconds (%g MUpdates/s)\n", time,
            1e-6 * (double)all_data->eta->nx * (double)all_data->eta->ny * (double)nt / time);
 
-    // Libération de la mémoire GPU
     #pragma omp target exit data \
-        map(release: *all_data->h, *all_data->h_interp, \
-                     *all_data->eta, *all_data->u, *all_data->v)
+        map(from: *all_data->eta, *all_data->u, *all_data->v) \
+        map(release: *all_data->h, *all_data->h_interp)
 
     free_all_data(all_data);
 
