@@ -1,25 +1,23 @@
 {
-    // See https://go.microsoft.com/fwlink/?LinkId=733558
-    // for the documentation about the tasks.json format
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "C build",
-            "command": "C:\\Users\\lucas\\mingw64\\bin\\gcc.exe",
+            "label": "Run GPU Code",
+            "type": "shell",
+            "command": "wsl",
             "args": [
-                "-I",
-                "${MSMPI_INC}",
-                "-L",
-                "${MSMPI_LIB64}",
-                "-lmsmpi",
-                    ],
-            "group": "build",
-            "presentation": {
-                // Reveal the output only if unrecognized errors occur.
-                "reveal": "silent"
+                "bash",
+                "${workspaceFolder}/source/GPU/set_gpu.sh"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
             },
-            // Use the standard MS compiler pattern to detect errors, warnings and infos
-            "problemMatcher": "$msCompile"
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
         }
     ]
 }

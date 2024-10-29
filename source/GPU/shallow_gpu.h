@@ -55,6 +55,11 @@ typedef struct {
     data_t *h_interp;
 } all_data_t;
 
+// Declaration of mapper to transfer data to GPU
+#pragma omp declare mapper(data_t data) \
+    map(to: data.nx, data.ny, data.dx, data.dy) \
+    map(tofrom: data.values[0:data.nx*data.ny])
+
 /*---------------------------*/
 /* Define functon prototypes */
 /*---------------------------*/
