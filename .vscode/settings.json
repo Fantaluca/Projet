@@ -5,7 +5,9 @@
         "stdio.h": "c",
         "math.h": "c",
         "compare": "c",
-        "type_traits": "cpp"
+        "type_traits": "cpp",
+        "chrono": "c",
+        "functional": "c"
     },
     "C_Cpp.default.compilerPath": "C:\\Users\\lucas\\mingw64\\bin\\gcc.exe"
 }

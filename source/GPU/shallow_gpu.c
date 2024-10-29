@@ -64,10 +64,18 @@ void update_velocities(int nx, int ny, const parameters_t param, all_data_t *all
             double eta_imj = GET(all_data->eta, (i == 0) ? 0 : i - 1, j);
             double eta_ijm = GET(all_data->eta, i, (j == 0) ? 0 : j - 1);
             
-            double u_ij = (1. - c2) * GET(all_data->u, i, j)
-                - c1 / param.dx * (eta_ij - eta_imj);
-            double v_ij = (1. - c2) * GET(all_data->v, i, j)
-                - c1 / param.dy * (eta_ij - eta_ijm);
+            // Récupération des anciennes vitesses
+            double u_old = GET(all_data->u, i, j);
+            double v_old = GET(all_data->v, i, j);
+            
+            // Calcul des nouvelles vitesses avec Coriolis
+            double u_ij = (1. - c2) * u_old 
+                - c1 / param.dx * (eta_ij - eta_imj)
+                + param.dt * param.f * v_old;  // Terme de Coriolis
+                
+            double v_ij = (1. - c2) * v_old
+                - c1 / param.dy * (eta_ij - eta_ijm)
+                - param.dt * param.f * u_old;  // Terme de Coriolis
             
             SET(all_data->u, i, j, u_ij);
             SET(all_data->v, i, j, v_ij);
@@ -75,104 +83,122 @@ void update_velocities(int nx, int ny, const parameters_t param, all_data_t *all
     }
 }
 
-static inline int min_int(int a, int b) {
-    return (a < b) ? a : b;
-}
 
-static inline int max_int(int a, int b) {
-    return (a > b) ? a : b;
-}
-
-void boundary_source_condition(int n, int nx, int ny, const parameters_t param, all_data_t *all_data) {
-    double t = n * param.dt;
-    
-    if(param.source_type == 2) {
-        double A = 5.0;
-        double f = 1.0 / 20.0;
-        double omega = 2 * M_PI * f;
+void boundary_condition(int nx, int ny, const parameters_t param, all_data_t *all_data) {
+    #pragma omp target teams distribute parallel for \
+        map(tofrom: *all_data->eta, *all_data->u, *all_data->v) \
+        map(to: *all_data->h_interp)
+    for(int i = 0; i < nx; i++) {
+        double h_bottom = GET(all_data->h_interp, i, 0);
+        double h_top = GET(all_data->h_interp, i, ny-1);
+        double c_bottom = sqrt(param.g * h_bottom);
+        double c_top = sqrt(param.g * h_top);
         
-        // Source ponctuelle avec enveloppe gaussienne
+        if(i > 0 && i < nx-1) {
+            if(param.boundary_type == 0) {
+                // Conditions réflexives
+                SET(all_data->eta, i, 0, GET(all_data->eta, i, 1));
+                SET(all_data->eta, i, ny-1, GET(all_data->eta, i, ny-2));
+                SET(all_data->u, i, 0, GET(all_data->u, i, 1));
+                SET(all_data->u, i, ny-1, GET(all_data->u, i, ny-2));
+                SET(all_data->v, i, 0, -GET(all_data->v, i, 1));
+                SET(all_data->v, i, ny-1, -GET(all_data->v, i, ny-2));
+            } else {
+                // Conditions transparentes
+                SET(all_data->eta, i, 0, GET(all_data->eta, i, 1) - 
+                    (c_bottom * param.dt / param.dy) * 
+                    (GET(all_data->eta, i, 1) - GET(all_data->eta, i, 0)));
+                SET(all_data->u, i, 0, GET(all_data->u, i, 1) - 
+                    (c_bottom * param.dt / param.dy) * 
+                    (GET(all_data->u, i, 1) - GET(all_data->u, i, 0)));
+                SET(all_data->v, i, 0, GET(all_data->v, i, 1) - 
+                    (c_bottom * param.dt / param.dy) * 
+                    (GET(all_data->v, i, 1) - GET(all_data->v, i, 0)));
+
+                SET(all_data->eta, i, ny-1, GET(all_data->eta, i, ny-2) - 
+                    (c_top * param.dt / param.dy) * 
+                    (GET(all_data->eta, i, ny-1) - GET(all_data->eta, i, ny-2)));
+                SET(all_data->u, i, ny-1, GET(all_data->u, i, ny-2) - 
+                    (c_top * param.dt / param.dy) * 
+                    (GET(all_data->u, i, ny-1) - GET(all_data->u, i, ny-2)));
+                SET(all_data->v, i, ny-1, GET(all_data->v, i, ny-2) - 
+                    (c_top * param.dt / param.dy) * 
+                    (GET(all_data->v, i, ny-1) - GET(all_data->v, i, ny-2)));
+            }
+        }
+    }
+
+    #pragma omp target teams distribute parallel for \
+        map(tofrom: *all_data->eta, *all_data->u, *all_data->v) \
+        map(to: *all_data->h_interp)
+    for(int j = 0; j < ny; j++) {
+        double h_left = GET(all_data->h_interp, 0, j);
+        double h_right = GET(all_data->h_interp, nx-1, j);
+        double c_left = sqrt(param.g * h_left);
+        double c_right = sqrt(param.g * h_right);
+        
+        if(j > 0 && j < ny-1) {
+            if(param.boundary_type == 0) {
+                // Conditions réflexives
+                SET(all_data->eta, 0, j, GET(all_data->eta, 1, j));
+                SET(all_data->eta, nx-1, j, GET(all_data->eta, nx-2, j));
+                SET(all_data->u, 0, j, -GET(all_data->u, 1, j));
+                SET(all_data->u, nx-1, j, -GET(all_data->u, nx-2, j));
+                SET(all_data->v, 0, j, GET(all_data->v, 1, j));
+                SET(all_data->v, nx-1, j, GET(all_data->v, nx-2, j));
+            } else {
+                // Conditions transparentes
+                SET(all_data->eta, 0, j, GET(all_data->eta, 1, j) - 
+                    (c_left * param.dt / param.dx) * 
+                    (GET(all_data->eta, 1, j) - GET(all_data->eta, 0, j)));
+                SET(all_data->u, 0, j, GET(all_data->u, 1, j) - 
+                    (c_left * param.dt / param.dx) * 
+                    (GET(all_data->u, 1, j) - GET(all_data->u, 0, j)));
+                SET(all_data->v, 0, j, GET(all_data->v, 1, j) - 
+                    (c_left * param.dt / param.dx) * 
+                    (GET(all_data->v, 1, j) - GET(all_data->v, 0, j)));
+
+                SET(all_data->eta, nx-1, j, GET(all_data->eta, nx-2, j) - 
+                    (c_right * param.dt / param.dx) * 
+                    (GET(all_data->eta, nx-1, j) - GET(all_data->eta, nx-2, j)));
+                SET(all_data->u, nx-1, j, GET(all_data->u, nx-2, j) - 
+                    (c_right * param.dt / param.dx) * 
+                    (GET(all_data->u, nx-1, j) - GET(all_data->u, nx-2, j)));
+                SET(all_data->v, nx-1, j, GET(all_data->v, nx-2, j) - 
+                    (c_right * param.dt / param.dx) * 
+                    (GET(all_data->v, nx-1, j) - GET(all_data->v, nx-2, j)));
+            }
+        }
+    }
+}
+
+// Fonction pour appliquer la source
+void apply_source(int n, int nx, int ny, const parameters_t param, all_data_t *all_data) {
+    double t = n * param.dt;
+    double A = 5.0;
+    double f = 1.0 / 20.0;
+    
+    if(param.source_type == 1) {
+        // Source sinusoïdale sur le bord supérieur
+        #pragma omp target teams distribute parallel for collapse(2) \
+            map(tofrom: *all_data->v)
+        for(int i = 0; i < nx; i++) {
+            for(int j = 0; j < ny + 1; j++) {
+                if(j == ny) {
+                    SET(all_data->v, i, j, A * sin(2 * M_PI * f * t));
+                }
+            }
+        }
+    }
+    else if(param.source_type == 2) {
+        // Source ponctuelle au centre
         #pragma omp target teams distribute parallel for collapse(2) \
             map(tofrom: *all_data->eta)
         for(int i = 0; i < nx; i++) {
             for(int j = 0; j < ny; j++) {
                 if(i == nx/2 && j == ny/2) {
-                    double envelope = exp(-0.5 * (t - param.max_t/2) * (t - param.max_t/2) / (param.max_t/6) / (param.max_t/6));
-                    double source_val = A * sin(omega * t) * envelope;
-                    SET(all_data->eta, i, j, source_val);
+                    SET(all_data->eta, i, j, A * sin(2 * M_PI * f * t));
                 }
-            }
-        }
-        
-        // Conditions absorbantes aux bords
-        #pragma omp target teams distribute parallel for \
-            map(tofrom: *all_data->eta, *all_data->u, *all_data->v) \
-            map(to: *all_data->h_interp)
-        for(int i = 0; i < nx; i++) {
-            double h_bottom = 0.25 * (GET(all_data->h_interp, max_int(0,i-1), 0) + 
-                                    2*GET(all_data->h_interp, i, 0) + 
-                                    GET(all_data->h_interp, min_int(nx-1,i+1), 0));
-            double h_top = 0.25 * (GET(all_data->h_interp, max_int(0,i-1), ny-1) + 
-                                 2*GET(all_data->h_interp, i, ny-1) + 
-                                 GET(all_data->h_interp, min_int(nx-1,i+1), ny-1));
-            
-            double c_bottom = sqrt(param.g * h_bottom);
-            double c_top = sqrt(param.g * h_top);
-            
-            double alpha = 0.9;
-            double coef_bottom = alpha * c_bottom * param.dt / param.dy;
-            double coef_top = alpha * c_top * param.dt / param.dy;
-            
-            if(i > 0 && i < nx-1) {
-                // Bord bas
-                SET(all_data->eta, i, 0, GET(all_data->eta, i, 1) - coef_bottom * 
-                    (GET(all_data->eta, i, 1) - GET(all_data->eta, i, 0)));
-                SET(all_data->u, i, 0, GET(all_data->u, i, 1) - coef_bottom * 
-                    (GET(all_data->u, i, 1) - GET(all_data->u, i, 0)));
-                SET(all_data->v, i, 0, 0.0);
-                
-                // Bord haut
-                SET(all_data->eta, i, ny-1, GET(all_data->eta, i, ny-2) - coef_top * 
-                    (GET(all_data->eta, i, ny-1) - GET(all_data->eta, i, ny-2)));
-                SET(all_data->u, i, ny-1, GET(all_data->u, i, ny-2) - coef_top * 
-                    (GET(all_data->u, i, ny-1) - GET(all_data->u, i, ny-2)));
-                SET(all_data->v, i, ny-1, 0.0);
-            }
-        }
-        
-        // Bords verticaux
-        #pragma omp target teams distribute parallel for \
-            map(tofrom: *all_data->eta, *all_data->u, *all_data->v) \
-            map(to: *all_data->h_interp)
-        for(int j = 0; j < ny; j++) {
-            double h_left = 0.25 * (GET(all_data->h_interp, 0, max_int(0,j-1)) + 
-                                  2*GET(all_data->h_interp, 0, j) + 
-                                  GET(all_data->h_interp, 0, min_int(ny-1,j+1)));
-            double h_right = 0.25 * (GET(all_data->h_interp, nx-1, max_int(0,j-1)) + 
-                                   2*GET(all_data->h_interp, nx-1, j) + 
-                                   GET(all_data->h_interp, nx-1, min_int(ny-1,j+1)));
-            
-            double c_left = sqrt(param.g * h_left);
-            double c_right = sqrt(param.g * h_right);
-            
-            double alpha = 0.9;
-            double coef_left = alpha * c_left * param.dt / param.dx;
-            double coef_right = alpha * c_right * param.dt / param.dx;
-            
-            if(j > 0 && j < ny-1) {
-                // Bord gauche
-                SET(all_data->eta, 0, j, GET(all_data->eta, 1, j) - coef_left * 
-                    (GET(all_data->eta, 1, j) - GET(all_data->eta, 0, j)));
-                SET(all_data->u, 0, j, 0.0);
-                SET(all_data->v, 0, j, GET(all_data->v, 1, j) - coef_left * 
-                    (GET(all_data->v, 1, j) - GET(all_data->v, 0, j)));
-                
-                // Bord droit
-                SET(all_data->eta, nx-1, j, GET(all_data->eta, nx-2, j) - coef_right * 
-                    (GET(all_data->eta, nx-1, j) - GET(all_data->eta, nx-2, j)));
-                SET(all_data->u, nx-1, j, 0.0);
-                SET(all_data->v, nx-1, j, GET(all_data->v, nx-2, j) - coef_right * 
-                    (GET(all_data->v, nx-1, j) - GET(all_data->v, nx-2, j)));
             }
         }
     }
@@ -191,15 +217,4 @@ void interp_bathy(int nx, int ny, const parameters_t param, all_data_t *all_data
             SET(all_data->h_interp, i, j, val);
         }
     }
-}
-
-double find_max_abs(const double* values, int size) {
-    double max_val = 0.0;
-    for(int i = 0; i < size; i++) {
-        double abs_val = fabs(values[i]);
-        if(abs_val > max_val) {
-            max_val = abs_val;
-        }
-    }
-    return max_val;
 }

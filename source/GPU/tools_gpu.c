@@ -18,6 +18,8 @@ int read_parameters(parameters_t *param, const char *filename)
   if(ok) ok = (fscanf(fp, "%lf", &param->dt) == 1);
   if(ok) ok = (fscanf(fp, "%lf", &param->max_t) == 1);
   if(ok) ok = (fscanf(fp, "%lf", &param->g) == 1);
+  if(ok) ok = (fscanf(fp, "%lf", &param->latitude) == 1);
+  if(ok) ok = (fscanf(fp, "%d", &param->boundary_type) == 1);
   if(ok) ok = (fscanf(fp, "%lf", &param->gamma) == 1);
   if(ok) ok = (fscanf(fp, "%d", &param->source_type) == 1);
   if(ok) ok = (fscanf(fp, "%d", &param->sampling_rate) == 1);
@@ -37,6 +39,8 @@ int read_parameters(parameters_t *param, const char *filename)
   if(ok) ok = (fscanf(fp, "%256s", param->output_eta_filename) == 1);
   if(ok) ok = (fscanf(fp, "%256s", param->output_u_filename) == 1);
   if(ok) ok = (fscanf(fp, "%256s", param->output_v_filename) == 1);
+    
+  param->f = 2.0 * 7.2921e-5 * sin(param->latitude * M_PI / 180.0);
   fclose(fp);
   if(!ok) {
     printf("Error: Could not read one or more parameters in '%s'\n", full_path);

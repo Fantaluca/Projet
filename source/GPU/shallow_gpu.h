@@ -35,6 +35,9 @@ typedef struct {
     double g, gamma;
     int source_type;
     int sampling_rate;
+    double latitude;
+    int boundary_type;
+    double f;
     char input_h_filename[MAX_PATH_LENGTH];
     char output_eta_filename[MAX_PATH_LENGTH];
     char output_u_filename[MAX_PATH_LENGTH];
@@ -84,13 +87,8 @@ void interp_bathy(int nx,
                   const parameters_t param,
                   all_data_t *all_data);
 
-void boundary_source_condition(int n,
-                               int nx,
-                               int ny,
-                               const parameters_t param,
-                               all_data_t *all_data);
-
-double find_max_abs(const double* values, int size);
+void apply_source(int n, int nx, int ny, const parameters_t param, all_data_t *all_data);
+void boundary_condition(int nx, int ny, const parameters_t param, all_data_t *all_data);
 
 /*------ From "tools.c" ------*/
 int read_parameters(parameters_t *param,
