@@ -7,6 +7,7 @@
 #include <math.h>
 #include <string.h>
 #include <time.h>
+#include <ctype.h>
 
 #include <mpi.h>
 
@@ -126,11 +127,14 @@ void update_eta(const parameters_t param,
                 gather_data_t *gdata,
                 MPITopology *topo);
 
-void boundary_source_condition(int n, int nx_glob, int ny_glob,
-                               const parameters_t param,
-                               all_data_t **all_data,
-                               gather_data_t *gdata,
-                               MPITopology *topo);
+void boundary_conditions(all_data_t **all_data,
+                              MPITopology *topo);
+
+void apply_source(int timestep, int nx_glob, int ny_glob,
+                          const parameters_t param,
+                          all_data_t **all_data,
+                          gather_data_t *gdata,
+                          MPITopology *topo);
 
 double interpolate_data(const data_t *data,
                         int nx_glob, int ny_glob,

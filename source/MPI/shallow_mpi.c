@@ -34,61 +34,102 @@ void update_eta(const parameters_t param,
                 gather_data_t *gdata,
                 MPITopology *topo) {
 
-    MPI_Request request_recv[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
-    MPI_Request request_send[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
-    MPI_Status status[2];
+    // Create separate request arrays for sends and receives
+    MPI_Request request_recv[4] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL, 
+                                  MPI_REQUEST_NULL, MPI_REQUEST_NULL};
+    MPI_Request request_send[4] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL,
+                                  MPI_REQUEST_NULL, MPI_REQUEST_NULL};
+    MPI_Status status[4];
 
     int nx = (*all_data)->eta->nx;
     int ny = (*all_data)->eta->ny;
 
-    // Allocate buffers
-    double *send_u = calloc(ny, sizeof(double));
-    double *send_v = calloc(nx, sizeof(double));
-    double *recv_buffer_u = NULL;
-    double *recv_buffer_v = NULL;
+    // Allocate all buffers
+    double *send_left = calloc(ny, sizeof(double));
+    double *send_right = calloc(ny, sizeof(double));
+    double *send_down = calloc(nx, sizeof(double));
+    double *send_up = calloc(nx, sizeof(double));
+    
+    double *recv_left = NULL;
+    double *recv_right = NULL;
+    double *recv_down = NULL;
+    double *recv_up = NULL;
 
-    // If neighbors[DIR] == NULL : global boundary -> 0.0 value
-    if (topo->neighbors[RIGHT] != MPI_PROC_NULL) recv_buffer_u = calloc(ny, sizeof(double));
-    if (topo->neighbors[UP] != MPI_PROC_NULL) recv_buffer_v = calloc(nx, sizeof(double));
+    if (topo->neighbors[LEFT] != MPI_PROC_NULL) recv_left = calloc(ny, sizeof(double));
+    if (topo->neighbors[RIGHT] != MPI_PROC_NULL) recv_right = calloc(ny, sizeof(double));
+    if (topo->neighbors[DOWN] != MPI_PROC_NULL) recv_down = calloc(nx, sizeof(double));
+    if (topo->neighbors[UP] != MPI_PROC_NULL) recv_up = calloc(nx, sizeof(double));
 
-    // Receive processes' neighbours (RIGHT/UP)
+    // Prepare send buffers
+    for (int j = 0; j < ny; j++) {
+        send_left[j] = GET((*all_data)->u, 0, j);
+        send_right[j] = GET((*all_data)->u, nx, j);  // Note: u has nx+1 points
+    }
+    for (int i = 0; i < nx; i++) {
+        send_down[i] = GET((*all_data)->v, i, 0);
+        send_up[i] = GET((*all_data)->v, i, ny);  // Note: v has ny+1 points
+    }
+
+    // Post all receives first
     int recv_count = 0;
-    if (topo->neighbors[RIGHT] != MPI_PROC_NULL) 
-        MPI_Irecv(recv_buffer_u, ny, MPI_DOUBLE, topo->neighbors[RIGHT], 100,
+    if (topo->neighbors[LEFT] != MPI_PROC_NULL)
+        MPI_Irecv(recv_left, ny, MPI_DOUBLE, topo->neighbors[LEFT], 100,
                   topo->cart_comm, &request_recv[recv_count++]);
-    
+    if (topo->neighbors[RIGHT] != MPI_PROC_NULL)
+        MPI_Irecv(recv_right, ny, MPI_DOUBLE, topo->neighbors[RIGHT], 101,
+                  topo->cart_comm, &request_recv[recv_count++]);
+    if (topo->neighbors[DOWN] != MPI_PROC_NULL)
+        MPI_Irecv(recv_down, nx, MPI_DOUBLE, topo->neighbors[DOWN], 102,
+                  topo->cart_comm, &request_recv[recv_count++]);
     if (topo->neighbors[UP] != MPI_PROC_NULL)
-        MPI_Irecv(recv_buffer_v, nx, MPI_DOUBLE, topo->neighbors[UP], 101, 
+        MPI_Irecv(recv_up, nx, MPI_DOUBLE, topo->neighbors[UP], 103,
                   topo->cart_comm, &request_recv[recv_count++]);
-    
-    // Send processes' neighbours (LEFT/DOWN)
-    for (int j = 0; j < ny; j++) send_u[j] = GET((*all_data)->u, 0, j);
-    for (int i = 0; i < nx; i++) send_v[i] = GET((*all_data)->v, i, ny-1);
 
+    // Post all sends
     int send_count = 0;
-    if (topo->neighbors[LEFT] != MPI_PROC_NULL) 
-        MPI_Isend(send_u, ny, MPI_DOUBLE, topo->neighbors[LEFT], 100,
+    if (topo->neighbors[RIGHT] != MPI_PROC_NULL)
+        MPI_Isend(send_right, ny, MPI_DOUBLE, topo->neighbors[RIGHT], 100,
                   topo->cart_comm, &request_send[send_count++]);
-    
-    if (topo->neighbors[DOWN] != MPI_PROC_NULL) 
-        MPI_Isend(send_v, nx, MPI_DOUBLE, topo->neighbors[DOWN], 101,
+    if (topo->neighbors[LEFT] != MPI_PROC_NULL)
+        MPI_Isend(send_left, ny, MPI_DOUBLE, topo->neighbors[LEFT], 101,
                   topo->cart_comm, &request_send[send_count++]);
-    
-    MPI_Waitall(recv_count, request_recv, status);
-    
+    if (topo->neighbors[UP] != MPI_PROC_NULL)
+        MPI_Isend(send_up, nx, MPI_DOUBLE, topo->neighbors[UP], 102,
+                  topo->cart_comm, &request_send[send_count++]);
+    if (topo->neighbors[DOWN] != MPI_PROC_NULL)
+        MPI_Isend(send_down, nx, MPI_DOUBLE, topo->neighbors[DOWN], 103,
+                  topo->cart_comm, &request_send[send_count++]);
+
+    // Wait for all receives to complete
+    if (recv_count > 0) {
+        MPI_Waitall(recv_count, request_recv, status);
+    }
+
     // Update eta
     for (int j = 0; j < ny; j++) {
         for (int i = 0; i < nx; i++) {
             double h_ij = GET((*all_data)->h_interp, i, j);
             if (h_ij <= 0) continue;
 
+            // Get u values with proper boundary handling
             double u_i = GET((*all_data)->u, i, j);
-            double u_ip1 = (i < nx-1) ? GET((*all_data)->u, i+1, j) : 
-                          (recv_buffer_u ? recv_buffer_u[j] : 0.0);
-            
+            double u_ip1;
+            if (i < nx-1) {
+                u_ip1 = GET((*all_data)->u, i+1, j);
+            } else {
+                u_ip1 = (topo->neighbors[RIGHT] != MPI_PROC_NULL) ? 
+                        recv_right[j] : u_i;
+            }
+
+            // Get v values with proper boundary handling
             double v_j = GET((*all_data)->v, i, j);
-            double v_jp1 = (j < ny-1) ? GET((*all_data)->v, i, j+1) : 
-                          (recv_buffer_v ? recv_buffer_v[i] : 0.0);
+            double v_jp1;
+            if (j < ny-1) {
+                v_jp1 = GET((*all_data)->v, i, j+1);
+            } else {
+                v_jp1 = (topo->neighbors[UP] != MPI_PROC_NULL) ? 
+                        recv_up[i] : v_j;
+            }
 
             double du_dx = (u_ip1 - u_i) / param.dx;
             double dv_dy = (v_jp1 - v_j) / param.dy;
@@ -96,17 +137,23 @@ void update_eta(const parameters_t param,
             double eta_old = GET((*all_data)->eta, i, j);
             double eta_new = eta_old - param.dt * h_ij * (du_dx + dv_dy);
             SET((*all_data)->eta, i, j, eta_new);
-
         }
     }
 
-    MPI_Waitall(send_count, request_send, status);
+    // Wait for all sends to complete
+    if (send_count > 0) {
+        MPI_Waitall(send_count, request_send, status);
+    }
 
-    // Clean buffers
-    free(send_u);
-    free(send_v);
-    free(recv_buffer_u);
-    free(recv_buffer_v);
+    // Clean up
+    free(send_left);
+    free(send_right);
+    free(send_down);
+    free(send_up);
+    if (recv_left) free(recv_left);
+    if (recv_right) free(recv_right);
+    if (recv_down) free(recv_down);
+    if (recv_up) free(recv_up);
 }
 
 void update_velocities(const parameters_t param,
@@ -114,48 +161,75 @@ void update_velocities(const parameters_t param,
                       gather_data_t *gdata,
                       MPITopology *topo) {
 
-    MPI_Request request_recv[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
-    MPI_Request request_send[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
-    MPI_Status status[2];
+    MPI_Request request_recv[4] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL,
+                                  MPI_REQUEST_NULL, MPI_REQUEST_NULL};
+    MPI_Request request_send[4] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL,
+                                  MPI_REQUEST_NULL, MPI_REQUEST_NULL};
+    MPI_Status status[4];
 
     int nx = (*all_data)->eta->nx;
     int ny = (*all_data)->eta->ny;
     
-    // Allocate buffers
-    double *send_eta_right = calloc(ny, sizeof(double));
-    double *send_eta_up = calloc(nx, sizeof(double));
-    double *recv_buffer_left = NULL;
-    double *recv_buffer_down = NULL;
-
-    // If neighbors[DIR] == NULL : global boundary -> 0.0 value
-    if (topo->neighbors[LEFT] != MPI_PROC_NULL) recv_buffer_left = calloc(ny, sizeof(double));
-    if (topo->neighbors[DOWN] != MPI_PROC_NULL) recv_buffer_down = calloc(nx, sizeof(double));
-       
-    for (int j = 0; j < ny; j++) send_eta_right[j] = GET((*all_data)->eta, nx-1, j);
-    for (int i = 0; i < nx; i++) send_eta_up[i] = GET((*all_data)->eta, i, ny-1);
+    // Allocate all buffers
+    double *send_left = calloc(ny, sizeof(double));
+    double *send_right = calloc(ny, sizeof(double));
+    double *send_down = calloc(nx, sizeof(double));
+    double *send_up = calloc(nx, sizeof(double));
     
-    // Receive processes' neighbours (LEFT/DOWN)
+    double *recv_left = NULL;
+    double *recv_right = NULL;
+    double *recv_down = NULL;
+    double *recv_up = NULL;
+
+    if (topo->neighbors[LEFT] != MPI_PROC_NULL) recv_left = calloc(ny, sizeof(double));
+    if (topo->neighbors[RIGHT] != MPI_PROC_NULL) recv_right = calloc(ny, sizeof(double));
+    if (topo->neighbors[DOWN] != MPI_PROC_NULL) recv_down = calloc(nx, sizeof(double));
+    if (topo->neighbors[UP] != MPI_PROC_NULL) recv_up = calloc(nx, sizeof(double));
+
+    // Prepare send buffers with eta values
+    for (int j = 0; j < ny; j++) {
+        send_left[j] = GET((*all_data)->eta, 0, j);
+        send_right[j] = GET((*all_data)->eta, nx-1, j);
+    }
+    for (int i = 0; i < nx; i++) {
+        send_down[i] = GET((*all_data)->eta, i, 0);
+        send_up[i] = GET((*all_data)->eta, i, ny-1);
+    }
+
+    // Post all receives first
     int recv_count = 0;
-    if (topo->neighbors[LEFT] != MPI_PROC_NULL)  
-        MPI_Irecv(recv_buffer_left, ny, MPI_DOUBLE, topo->neighbors[LEFT], 200,
+    if (topo->neighbors[LEFT] != MPI_PROC_NULL)
+        MPI_Irecv(recv_left, ny, MPI_DOUBLE, topo->neighbors[LEFT], 200,
                   topo->cart_comm, &request_recv[recv_count++]);
-    
-    if (topo->neighbors[DOWN] != MPI_PROC_NULL) 
-        MPI_Irecv(recv_buffer_down, nx, MPI_DOUBLE, topo->neighbors[DOWN], 201, 
+    if (topo->neighbors[RIGHT] != MPI_PROC_NULL)
+        MPI_Irecv(recv_right, ny, MPI_DOUBLE, topo->neighbors[RIGHT], 201,
                   topo->cart_comm, &request_recv[recv_count++]);
-    
-    // Send processes' neighbours (RIGHT/UP)
-    int send_count = 0;
-    if (topo->neighbors[RIGHT] != MPI_PROC_NULL) 
-        MPI_Isend(send_eta_right, ny, MPI_DOUBLE, topo->neighbors[RIGHT], 200,
-                  topo->cart_comm, &request_send[send_count++]);
-    
+    if (topo->neighbors[DOWN] != MPI_PROC_NULL)
+        MPI_Irecv(recv_down, nx, MPI_DOUBLE, topo->neighbors[DOWN], 202,
+                  topo->cart_comm, &request_recv[recv_count++]);
+    if (topo->neighbors[UP] != MPI_PROC_NULL)
+        MPI_Irecv(recv_up, nx, MPI_DOUBLE, topo->neighbors[UP], 203,
+                  topo->cart_comm, &request_recv[recv_count++]);
 
-    if (topo->neighbors[UP] != MPI_PROC_NULL) 
-        MPI_Isend(send_eta_up, nx, MPI_DOUBLE, topo->neighbors[UP], 201,
+    // Post all sends
+    int send_count = 0;
+    if (topo->neighbors[RIGHT] != MPI_PROC_NULL)
+        MPI_Isend(send_right, ny, MPI_DOUBLE, topo->neighbors[RIGHT], 200,
                   topo->cart_comm, &request_send[send_count++]);
-    
-    MPI_Waitall(recv_count, request_recv, status);
+    if (topo->neighbors[LEFT] != MPI_PROC_NULL)
+        MPI_Isend(send_left, ny, MPI_DOUBLE, topo->neighbors[LEFT], 201,
+                  topo->cart_comm, &request_send[send_count++]);
+    if (topo->neighbors[UP] != MPI_PROC_NULL)
+        MPI_Isend(send_up, nx, MPI_DOUBLE, topo->neighbors[UP], 202,
+                  topo->cart_comm, &request_send[send_count++]);
+    if (topo->neighbors[DOWN] != MPI_PROC_NULL)
+        MPI_Isend(send_down, nx, MPI_DOUBLE, topo->neighbors[DOWN], 203,
+                  topo->cart_comm, &request_send[send_count++]);
+
+    // Wait for all receives to complete before updating
+    if (recv_count > 0) {
+        MPI_Waitall(recv_count, request_recv, status);
+    }
     
     // Update velocities
     double dx = param.dx;
@@ -163,33 +237,76 @@ void update_velocities(const parameters_t param,
     double c1 = param.dt * param.g;
     double c2 = param.dt * param.gamma;
 
+    // Update u (includes one extra point in x direction)
     for (int j = 0; j < ny; j++) {
-        for (int i = 0; i < nx; i++) {
+        for (int i = 0; i < nx + 1; i++) {
+            double eta_ij;
+            double eta_im1j;
 
-            double eta_ij = GET((*all_data)->eta, i, j);
-            double eta_imj = (i > 0) ? GET((*all_data)->eta, i-1, j) : 
-                           (recv_buffer_left ? recv_buffer_left[j] : eta_ij);
-            double eta_ijm = (j > 0) ? GET((*all_data)->eta, i, j-1) :
-                           (recv_buffer_down ? recv_buffer_down[i] : eta_ij);
+            if (i < nx) {
+                eta_ij = GET((*all_data)->eta, i, j);
+            } else if (topo->neighbors[RIGHT] != MPI_PROC_NULL) {
+                eta_ij = recv_right[j];
+            } else {
+                eta_ij = GET((*all_data)->eta, nx-1, j);  // Extrapolate at boundary
+            }
+
+            if (i > 0) {
+                eta_im1j = GET((*all_data)->eta, i-1, j);
+            } else if (topo->neighbors[LEFT] != MPI_PROC_NULL) {
+                eta_im1j = recv_left[j];
+            } else {
+                eta_im1j = eta_ij;  // Extrapolate at boundary
+            }
 
             double u_ij = GET((*all_data)->u, i, j);
-            double v_ij = GET((*all_data)->v, i, j);
-
-            double new_u = (1.0 - c2) * u_ij - c1 / dx * (eta_ij - eta_imj);
-            double new_v = (1.0 - c2) * v_ij - c1 / dy * (eta_ij - eta_ijm);
-
+            double new_u = (1.0 - c2) * u_ij - c1 / dx * (eta_ij - eta_im1j);
             SET((*all_data)->u, i, j, new_u);
+        }
+    }
+
+    // Update v (includes one extra point in y direction)
+    for (int j = 0; j < ny + 1; j++) {
+        for (int i = 0; i < nx; i++) {
+            double eta_ij;
+            double eta_ijm1;
+
+            if (j < ny) {
+                eta_ij = GET((*all_data)->eta, i, j);
+            } else if (topo->neighbors[UP] != MPI_PROC_NULL) {
+                eta_ij = recv_up[i];
+            } else {
+                eta_ij = GET((*all_data)->eta, i, ny-1);  // Extrapolate at boundary
+            }
+
+            if (j > 0) {
+                eta_ijm1 = GET((*all_data)->eta, i, j-1);
+            } else if (topo->neighbors[DOWN] != MPI_PROC_NULL) {
+                eta_ijm1 = recv_down[i];
+            } else {
+                eta_ijm1 = eta_ij;  // Extrapolate at boundary
+            }
+
+            double v_ij = GET((*all_data)->v, i, j);
+            double new_v = (1.0 - c2) * v_ij - c1 / dy * (eta_ij - eta_ijm1);
             SET((*all_data)->v, i, j, new_v);
         }
     }
 
-    MPI_Waitall(send_count, request_send, status);
+    // Wait for all sends to complete
+    if (send_count > 0) {
+        MPI_Waitall(send_count, request_send, status);
+    }
     
-    // Cleanup buffers
-    free(send_eta_right);
-    free(send_eta_up);
-    free(recv_buffer_left);
-    free(recv_buffer_down);
+    // Clean up
+    free(send_left);
+    free(send_right);
+    free(send_down);
+    free(send_up);
+    if (recv_left) free(recv_left);
+    if (recv_right) free(recv_right);
+    if (recv_down) free(recv_down);
+    if (recv_up) free(recv_up);
 }
 
 double interpolate_data(const data_t *data,
@@ -257,50 +374,73 @@ void interp_bathy(const parameters_t param,
     }
 }
 
-void boundary_source_condition(int n, int nx_glob, int ny_glob,
-                             const parameters_t param,
-                             all_data_t **all_data,
-                             gather_data_t *gdata,
-                             MPITopology *topo) {
+void boundary_conditions(all_data_t **all_data,
+                              MPITopology *topo) {
     
-    double t = n * param.dt;
-    
-    if (param.source_type == 1) {
-        double A = 5.0;
-        double f = 1.0 / 20.0;
-        
-        if (topo->neighbors[LEFT] == MPI_PROC_NULL) {
-            for (int j = 0; j < (*all_data)->u->ny; j++) SET((*all_data)->u, 0, j, 0.0);
-            
-        }
-        if (topo->neighbors[RIGHT] == MPI_PROC_NULL) {
-            for (int j = 0; j < (*all_data)->u->ny; j++) SET((*all_data)->u, (*all_data)->u->nx-1, j, 0.0);
-        }
-        if (topo->neighbors[DOWN] == MPI_PROC_NULL) {
-            for (int i = 0; i < (*all_data)->v->nx; i++) SET((*all_data)->v, i, 0, 0.0);
-            
-        }
-        if (topo->neighbors[UP] == MPI_PROC_NULL) {
-            double source = A * sin(2.0 * M_PI * f * t);
-            for (int i = 0; i < (*all_data)->v->nx; i++) SET((*all_data)->v, i, (*all_data)->v->ny-1, source);
+    if (topo->neighbors[LEFT] == MPI_PROC_NULL) {
+        for (int j = 0; j < (*all_data)->u->ny; j++) {
+            SET((*all_data)->u, 0, j, 0.0);
         }
     }
-    else if (param.source_type == 2) {
-
-        int global_middle_i = nx_glob / 2;
-        int global_middle_j = ny_glob / 2;
-        
-        int local_i = global_middle_i - START_I(gdata, topo->cart_rank);
-        int local_j = global_middle_j - START_J(gdata, topo->cart_rank);
-        
-        if (local_i >= 0 && local_i < (*all_data)->eta->nx && 
-            local_j >= 0 && local_j < (*all_data)->eta->ny) {
-            
-            double A = 5.0;
-            double f = 1.0 / 20.0;
-            double source = A * sin(2.0 * M_PI * f * t);
-            SET((*all_data)->eta, local_i, local_j, source);
+    if (topo->neighbors[RIGHT] == MPI_PROC_NULL) {
+        for (int j = 0; j < (*all_data)->u->ny; j++) {
+            SET((*all_data)->u, (*all_data)->u->nx-1, j, 0.0);
         }
+    }
+    
+    if (topo->neighbors[DOWN] == MPI_PROC_NULL) {
+        for (int i = 0; i < (*all_data)->v->nx; i++) {
+            SET((*all_data)->v, i, 0, 0.0);
+        }
+    }
+
+    if (topo->neighbors[UP] == MPI_PROC_NULL) {
+            for (int i = 0; i < (*all_data)->v->nx; i++) {
+                SET((*all_data)->v, i, (*all_data)->v->ny-1, 0.0);
+            }
+        }
+}
+
+void apply_source(int timestep, int nx_glob, int ny_glob,
+                          const parameters_t param,
+                          all_data_t **all_data,
+                          gather_data_t *gdata,
+                          MPITopology *topo) {
+                              
+    double t = timestep * param.dt;
+    double A = 5.0;  
+    double f = 1.0 / 20.0; 
+    double source = A * sin(2.0 * M_PI * f * t);
+    
+    switch(param.source_type) {
+        case 1: {
+            if (topo->neighbors[UP] == MPI_PROC_NULL) {
+                for (int i = 0; i < (*all_data)->v->nx; i++) {
+                    SET((*all_data)->v, i, (*all_data)->v->ny-1, source);
+                }
+            }
+            break;
+        }
+        
+        case 2: {
+            int global_middle_i = nx_glob / 2;
+            int global_middle_j = ny_glob / 2;
+            
+            int local_i = global_middle_i - START_I(gdata, topo->cart_rank);
+            int local_j = global_middle_j - START_J(gdata, topo->cart_rank);
+            
+            if (local_i >= 0 && local_i < (*all_data)->eta->nx &&
+                local_j >= 0 && local_j < (*all_data)->eta->ny) {
+                SET((*all_data)->eta, local_i, local_j, source);
+            }
+            break;
+        }
+        
+        default:
+            if (topo->cart_rank == 0) {
+                printf("Warning: Unknown source type %d\n", param.source_type);
+            }
+            break;
     }
 }
 
@@ -346,8 +486,11 @@ int initialize_gather_structures(const MPITopology *topo,
                                gather_data_t *gdata,
                                int nx_glob, int ny_glob,
                                double dx, double dy) {
-  
+    
+    // Initialize structure
     memset(gdata, 0, sizeof(gather_data_t));
+    
+    // Allocate arrays for gather operation
     gdata->recv_size_eta = calloc(topo->nb_process, sizeof(int));
     gdata->recv_size_u = calloc(topo->nb_process, sizeof(int));
     gdata->recv_size_v = calloc(topo->nb_process, sizeof(int));
@@ -358,14 +501,13 @@ int initialize_gather_structures(const MPITopology *topo,
     if (!gdata->recv_size_eta || !gdata->recv_size_u || !gdata->recv_size_v ||
         !gdata->displacements_eta || !gdata->displacements_u || !gdata->displacements_v) {
         fprintf(stderr, "Rank %d: Failed to allocate size arrays\n", topo->cart_rank);
-        fflush(stdout);
         return 1;
     }
 
+    // Allocate rank_glob array
     gdata->rank_glob = calloc(topo->nb_process, sizeof(limit_t*));
     if (!gdata->rank_glob) {
         fprintf(stderr, "Rank %d: Failed to allocate rank_glob\n", topo->cart_rank);
-        fflush(stdout);
         return 1;
     }
 
@@ -373,40 +515,48 @@ int initialize_gather_structures(const MPITopology *topo,
         gdata->rank_glob[r] = calloc(2, sizeof(limit_t));
         if (!gdata->rank_glob[r]) {
             fprintf(stderr, "Rank %d: Failed to allocate rank_glob[%d]\n", topo->cart_rank, r);
-            fflush(stdout);
             return 1;
         }
     }
 
+    // Calculate base dimensions and remainders
     int base_nx = nx_glob / topo->dims[0];
     int base_ny = ny_glob / topo->dims[1];
     int remainder_x = nx_glob % topo->dims[0];
     int remainder_y = ny_glob % topo->dims[1];
 
+    // Keep track of current position
+    int current_x = 0;
+    int current_y = 0;
+
     if (topo->cart_rank == 0) {
         int total_offset = 0;
         
-        // Important: browse processes in the order of the cartesian grid
+        // Browse processes in the order of the cartesian grid
         for (int j = 0; j < topo->dims[1]; j++) {
+            current_x = 0;  // Reset X position for each row
+            
             for (int i = 0; i < topo->dims[0]; i++) {
                 int coords[2] = {i, j};
                 int rank;
                 MPI_Cart_rank(topo->cart_comm, coords, &rank);
 
+                // Calculate local dimensions
                 int local_nx = base_nx + (i < remainder_x ? 1 : 0);
                 int local_ny = base_ny + (j < remainder_y ? 1 : 0);
 
-                // X direction 
-                gdata->rank_glob[rank][0].start = i * base_nx + (i < remainder_x ? i : remainder_x);
+                // Set start and end positions for X direction
+                gdata->rank_glob[rank][0].start = current_x;
                 gdata->rank_glob[rank][0].n = local_nx;
-                gdata->rank_glob[rank][0].end = gdata->rank_glob[rank][0].start + local_nx;
+                gdata->rank_glob[rank][0].end = current_x + local_nx;
+                current_x += local_nx;
 
-                // Y direction
-                gdata->rank_glob[rank][1].start = j * base_ny + (j < remainder_y ? j : remainder_y);
+                // Set start and end positions for Y direction
+                gdata->rank_glob[rank][1].start = current_y;
                 gdata->rank_glob[rank][1].n = local_ny;
-                gdata->rank_glob[rank][1].end = gdata->rank_glob[rank][1].start + local_ny;
+                gdata->rank_glob[rank][1].end = current_y + local_ny;
 
-                // Size for MPI_Gatherv
+                // Calculate receive sizes and displacements
                 gdata->recv_size_eta[rank] = local_nx * local_ny;
                 gdata->recv_size_u[rank] = (local_nx + 1) * local_ny;
                 gdata->recv_size_v[rank] = local_nx * (local_ny + 1);
@@ -417,6 +567,7 @@ int initialize_gather_structures(const MPITopology *topo,
                 
                 total_offset += gdata->recv_size_eta[rank];
             }
+            current_y += base_ny + (j < remainder_y ? 1 : 0);  // Update Y position after each row
         }
 
         // Allocate reception buffers for rank 0
@@ -430,6 +581,7 @@ int initialize_gather_structures(const MPITopology *topo,
             return 1;
         }
 
+        // Initialize gathered_output structures
         for (int i = 0; i < 3; i++) {
             gdata->gathered_output[i].nx = nx_glob;
             gdata->gathered_output[i].ny = ny_glob;
@@ -440,6 +592,7 @@ int initialize_gather_structures(const MPITopology *topo,
         }
     }
 
+    // Synchronize all processes
     MPI_Barrier(topo->cart_comm);
     
     // Broadcast all necessary information
@@ -456,7 +609,6 @@ int initialize_gather_structures(const MPITopology *topo,
     }
 
     MPI_Barrier(topo->cart_comm);
-   
     return 0;
 }
 
@@ -467,7 +619,6 @@ void gather_and_assemble_data(const parameters_t param,
                              int nx_glob, int ny_glob,
                              int timestep) {
     
-    // Structures de données pour le gathering
     data_t *output_data[] = {all_data->eta, all_data->u, all_data->v};
     double *receive_buffers[] = {gdata->receive_data_eta,
                                gdata->receive_data_u,
@@ -479,52 +630,47 @@ void gather_and_assemble_data(const parameters_t param,
                           gdata->displacements_u,
                           gdata->displacements_v};
 
-    // Gather et assemblage pour chaque champ
+    // Gather and assemble each field
     for (int field = 0; field < 3; field++) {
-        // Gathering des données
-        int send_size = output_data[field]->nx * output_data[field]->ny;
-        MPI_Gatherv(output_data[field]->vals, send_size, MPI_DOUBLE,
+        data_t *local_data = output_data[field];
+        int send_size = local_data->nx * local_data->ny;
+
+        // Gathering data
+        MPI_Gatherv(local_data->vals, send_size, MPI_DOUBLE,
                     receive_buffers[field], recv_sizes[field],
                     displacements[field], MPI_DOUBLE, 0, topo->cart_comm);
 
-        // Assemblage sur le rang 0
+        // Assembly on rank 0
         if (topo->cart_rank == 0) {
-            const int nx_gathered = nx_glob;
-            const int ny_gathered = ny_glob;
-
-            // Réinitialisation du tableau de sortie
+            // Reset output array
             memset(gdata->gathered_output[field].vals, 0,
-                  nx_gathered * ny_gathered * sizeof(double));
+                  nx_glob * ny_glob * sizeof(double));
 
-            // Assemblage des données de chaque processus
+            // Assemble data from each process
             for (int r = 0; r < topo->nb_process; r++) {
-                int coords[2];
-                MPI_Cart_coords(topo->cart_comm, r, 2, coords);
-                
                 int local_nx = RANK_NX(gdata, r);
                 int local_ny = RANK_NY(gdata, r);
                 int global_start_i = START_I(gdata, r);
                 int global_start_j = START_J(gdata, r);
 
-                // Copie des données locales dans la position globale
+                // Copy with verification
                 for (int j = 0; j < local_ny; j++) {
                     for (int i = 0; i < local_nx; i++) {
                         int global_i = global_start_i + i;
                         int global_j = global_start_j + j;
-
                         int src_idx = j * local_nx + i;
                         int src_with_displacement = displacements[field][r] + src_idx;
-                        int dst_idx = global_j * nx_gathered + global_i;
+                        int dst_idx = global_j * nx_glob + global_i;
 
-                        gdata->gathered_output[field].vals[dst_idx] =
-                            receive_buffers[field][src_with_displacement];
+                        double val = receive_buffers[field][src_with_displacement];
+                        gdata->gathered_output[field].vals[dst_idx] = val;
                     }
                 }
             }
-
-            // Mise à jour des métadonnées
-            gdata->gathered_output[field].nx = nx_gathered;
-            gdata->gathered_output[field].ny = ny_gathered;
+            
+            // Update metadata
+            gdata->gathered_output[field].nx = nx_glob;
+            gdata->gathered_output[field].ny = ny_glob;
             gdata->gathered_output[field].dx = param.dx;
             gdata->gathered_output[field].dy = param.dy;
         }

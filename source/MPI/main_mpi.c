@@ -75,8 +75,10 @@ int main(int argc, char **argv) {
     double start = GET_TIME(); 
     for (int n = 0; n < nt; n++) {
       
-      boundary_source_condition(n, nx_glob, ny_glob, param, &all_data, gdata, &topo);
-      
+      //boundary_source_condition(n, nx_glob, ny_glob, param, &all_data, gdata, &topo);
+      boundary_conditions(&all_data, &topo);
+      apply_source(n, nx_glob, ny_glob, param, &all_data, gdata, &topo);
+
       if (param.sampling_rate && !(n % param.sampling_rate)) 
         gather_and_assemble_data(param, all_data, gdata, &topo, nx_glob, ny_glob, n);
 
