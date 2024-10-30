@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
     for (int n = 0; n < nt; n++) {
       
       //boundary_source_condition(n, nx_glob, ny_glob, param, &all_data, gdata, &topo);
-      boundary_conditions(&all_data, &topo);
+      boundary_conditions(param , &all_data, &topo);
       apply_source(n, nx_glob, ny_glob, param, &all_data, gdata, &topo);
 
       if (param.sampling_rate && !(n % param.sampling_rate)) 

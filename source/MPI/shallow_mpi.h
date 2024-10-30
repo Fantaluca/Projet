@@ -57,6 +57,7 @@ typedef struct {
     double dx, dy, dt, max_t;
     double g, gamma;
     int source_type;
+    int boundary_type;
     int sampling_rate;
     char input_h_filename[MAX_PATH_LENGTH];
     char output_eta_filename[MAX_PATH_LENGTH];
@@ -127,7 +128,7 @@ void update_eta(const parameters_t param,
                 gather_data_t *gdata,
                 MPITopology *topo);
 
-void boundary_conditions(all_data_t **all_data,
+void boundary_conditions(const parameters_t param, all_data_t **all_data,
                               MPITopology *topo);
 
 void apply_source(int timestep, int nx_glob, int ny_glob,

@@ -48,9 +48,12 @@ int read_parameters(parameters_t *param, const char *filename) {
                 if(sscanf(start, "%d", &param->source_type) != 1) ok = 0;
                 break;
             case 7:
+                if(sscanf(start, "%d", &param->boundary_type) != 1) ok = 0;
+                break;
+            case 8:
                 if(sscanf(start, "%d", &param->sampling_rate) != 1) ok = 0;
                 break;
-            case 8: {
+            case 9: {
                 char temp[MAX_PATH_LENGTH];
                 // Extraire le premier mot non-commenté
                 token = strtok(start, " \t\n#");
@@ -70,7 +73,7 @@ int read_parameters(parameters_t *param, const char *filename) {
                 }
                 break;
             }
-            case 9: {
+            case 10: {
                 token = strtok(start, " \t\n#");
                 if(!token || strlen(token) >= 256) {
                     ok = 0;
@@ -80,7 +83,7 @@ int read_parameters(parameters_t *param, const char *filename) {
                 param->output_eta_filename[255] = '\0';
                 break;
             }
-            case 10: {
+            case 11: {
                 token = strtok(start, " \t\n#");
                 if(!token || strlen(token) >= 256) {
                     ok = 0;
@@ -90,7 +93,7 @@ int read_parameters(parameters_t *param, const char *filename) {
                 param->output_u_filename[255] = '\0';
                 break;
             }
-            case 11: {
+            case 12: {
                 token = strtok(start, " \t\n#");
                 if(!token || strlen(token) >= 256) {
                     ok = 0;
@@ -107,9 +110,9 @@ int read_parameters(parameters_t *param, const char *filename) {
     fclose(fp);
 
     // Check all parameters read
-    if(!ok || param_count != 12) {
+    if(!ok || param_count != 13) {
         printf("Error: Could not read one or more parameters in '%s'\n", full_path);
-        printf("Expected 12 parameters, got %d\n", param_count);
+        printf("Expected 13 parameters, got %d\n", param_count);
         return 1;
     }
 
