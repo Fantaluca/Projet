@@ -11,7 +11,7 @@
 2e-5    # gamma (1/s)
 
 # Configuration de la simulation
-2    # source_type
+4    # source_type
 2    # boundary type
 40   # sampling_rate
 

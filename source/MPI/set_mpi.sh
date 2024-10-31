@@ -17,7 +17,7 @@ mkdir -p "$BIN_PATH"
 # If using custom MPI paths, use:
 # gcc -O3 -fopenmp -I$MPI_INCLUDE -L$MPI_LIB -o "$BIN_PATH/shallow_mpi" shallow_mpi.c tools_mpi.c main_mpi.c -lm -lmpi
 # Otherwise, use standard compilation:
-gcc -O3 -fopenmp -o "$BIN_PATH/shallow_mpi" shallow_mpi.c tools_mpi.c main_mpi.c -lm -lmpi
+mpicc -O3 -fopenmp -o "$BIN_PATH/shallow_mpi" shallow_mpi.c tools_mpi.c main_mpi.c -lm 
 
 # Check if compilation succeed
 if [ $? -eq 0 ]; then

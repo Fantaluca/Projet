@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 REM Define paths and number of processes
 set MSMPI_INC="C:\Program Files (x86)\Microsoft SDKs\MPI\Include"
 set MSMPI_LIB64="C:\Program Files (x86)\Microsoft SDKs\MPI\Lib\x64"
-set NB_PROC=5
+set NB_PROC=4
 
 REM Define bin path
 set "BIN_PATH=%~dp0..\..\bin"
