@@ -106,6 +106,7 @@ void update_eta(const parameters_t param,
     }
 
     // Update eta
+    #pragma omp parallel for
     for (int j = 0; j < ny; j++) {
         for (int i = 0; i < nx; i++) {
             // Get h values at the required positions
@@ -232,6 +233,7 @@ void update_velocities(const parameters_t param,
     double c2 = param.dt * param.gamma;
 
     // Update u (includes one extra point in x direction)
+    #pragma omp parallel for
     for (int j = 0; j < ny; j++) {
         for (int i = 0; i < nx + 1; i++) {
             double eta_ij;
@@ -260,6 +262,7 @@ void update_velocities(const parameters_t param,
     }
 
     // Update v (includes one extra point in y direction)
+    #pragma omp parallel for
     for (int j = 0; j < ny + 1; j++) {
         for (int i = 0; i < nx; i++) {
             double eta_ij;
@@ -355,6 +358,8 @@ void interp_bathy(const parameters_t param,
     int local_nx = (*all_data)->h_interp->nx;
     int local_ny = (*all_data)->h_interp->ny;
 
+
+    #pragma omp parallel for
     for(int i = 0; i < local_nx; i++) {
         for(int j = 0; j < local_ny; j++) {
 
@@ -369,24 +374,34 @@ void interp_bathy(const parameters_t param,
 void boundary_conditions(const parameters_t param, all_data_t **all_data, MPITopology *topo) {
     switch(param.boundary_type) {
         case 1: {  // Reflective boundary conditions (original)
-            if (topo->neighbors[LEFT] == MPI_PROC_NULL) {
-                for (int j = 0; j < (*all_data)->u->ny; j++) {
-                    SET((*all_data)->u, 0, j, 0.0);
+            #pragma omp parallel sections
+            {
+                #pragma omp section
+                if (topo->neighbors[LEFT] == MPI_PROC_NULL) {
+                    for (int j = 0; j < (*all_data)->u->ny; j++) {
+                        SET((*all_data)->u, 0, j, 0.0);
+                    }
                 }
-            }
-            if (topo->neighbors[RIGHT] == MPI_PROC_NULL) {
-                for (int j = 0; j < (*all_data)->u->ny; j++) {
-                    SET((*all_data)->u, (*all_data)->u->nx-1, j, 0.0);
+                
+                #pragma omp section
+                if (topo->neighbors[RIGHT] == MPI_PROC_NULL) {
+                    for (int j = 0; j < (*all_data)->u->ny; j++) {
+                        SET((*all_data)->u, (*all_data)->u->nx - 1, j, 0.0);
+                    }
                 }
-            }
-            if (topo->neighbors[DOWN] == MPI_PROC_NULL) {
-                for (int i = 0; i < (*all_data)->v->nx; i++) {
-                    SET((*all_data)->v, i, 0, 0.0);
+
+                #pragma omp section
+                if (topo->neighbors[DOWN] == MPI_PROC_NULL) {
+                    for (int i = 0; i < (*all_data)->v->nx; i++) {
+                        SET((*all_data)->v, i, 0, 0.0);
+                    }
                 }
-            }
-            if (topo->neighbors[UP] == MPI_PROC_NULL) {
-                for (int i = 0; i < (*all_data)->v->nx; i++) {
-                    SET((*all_data)->v, i, (*all_data)->v->ny-1, 0.0);
+                
+                #pragma omp section
+                if (topo->neighbors[UP] == MPI_PROC_NULL) {
+                    for (int i = 0; i < (*all_data)->v->nx; i++) {
+                        SET((*all_data)->v, i, (*all_data)->v->ny - 1, 0.0);
+                    }
                 }
             }
             break;
@@ -512,6 +527,7 @@ void apply_source(int timestep, int nx_glob, int ny_glob,
     switch(param.source_type) {
         case 1: {  // Top boundary wave maker
             if (topo->neighbors[UP] == MPI_PROC_NULL) {
+                #pragma omp parallel for
                 for (int i = 0; i < (*all_data)->v->nx; i++) {
 
                     double x_pos = (START_I(gdata, topo->cart_rank) + i) * param.dx;
@@ -791,6 +807,7 @@ void gather_and_assemble_data(const parameters_t param,
                 int global_start_j = START_J(gdata, r);
 
                 // Copy with verification
+                #pragma omp parallel for
                 for (int j = 0; j < local_ny; j++) {
                     for (int i = 0; i < local_nx; i++) {
                         int global_i = global_start_i + i;

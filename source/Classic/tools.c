@@ -1,49 +1,125 @@
 #include "shallow.h"
+#include <string.h>
+#include <ctype.h>
 
-int read_parameters(struct parameters *param, const char *filename)
-{
-  printf("read_parameters function\n");
-  char full_path[MAX_PATH_LENGTH];
-  snprintf(full_path, sizeof(full_path), "%s%s", INPUT_DIR, filename);
+int read_parameters(struct parameters *param, const char *filename) {
+    char full_path[MAX_PATH_LENGTH];
+    snprintf(full_path, sizeof(full_path), "../../%s%s", INPUT_DIR, filename);
 
-  FILE *fp = fopen(full_path, "r");
-  if(!fp) {
-    printf("Error: Could not open parameter file '%s'\n", full_path);
-    return 1;
-  }
-
-  int ok = 1;
-  if(ok) ok = (fscanf(fp, "%lf", &param->dx) == 1);
-  if(ok) ok = (fscanf(fp, "%lf", &param->dy) == 1);
-  if(ok) ok = (fscanf(fp, "%lf", &param->dt) == 1);
-  if(ok) ok = (fscanf(fp, "%lf", &param->max_t) == 1);
-  if(ok) ok = (fscanf(fp, "%lf", &param->g) == 1);
-  if(ok) ok = (fscanf(fp, "%lf", &param->gamma) == 1);
-  if(ok) ok = (fscanf(fp, "%d", &param->source_type) == 1);
-  if(ok) ok = (fscanf(fp, "%d", &param->sampling_rate) == 1);
-  if(ok) {
-    char temp[MAX_PATH_LENGTH];
-    ok = (fscanf(fp, "%511s", temp) == 1);
-    if(ok) {
-      if (strlen(INPUT_DIR) + strlen(temp) + 1 > MAX_PATH_LENGTH) {
-        printf("Error: Path too long for input_h_filename\n");
-        ok = 0;
-      } else {
-        strcpy(param->input_h_filename, INPUT_DIR);
-        strcat(param->input_h_filename, temp);
-      }
+    FILE *fp = fopen(full_path, "r");
+    if(!fp) {
+        printf("Error: Could not open parameter file '%s'\n", full_path);
+        return 1;
     }
-  }
-  if(ok) ok = (fscanf(fp, "%256s", param->output_eta_filename) == 1);
-  if(ok) ok = (fscanf(fp, "%256s", param->output_u_filename) == 1);
-  if(ok) ok = (fscanf(fp, "%256s", param->output_v_filename) == 1);
-  fclose(fp);
-  if(!ok) {
-    printf("Error: Could not read one or more parameters in '%s'\n", full_path);
-    return 1;
-  }
-  return 0;
+
+    char line[1024];
+    char *token;
+    int param_count = 0;
+    int ok = 1;
+
+    while(fgets(line, sizeof(line), fp) && ok) {
+
+        char *start = line;
+        while(*start && isspace(*start)) start++;
+
+        // ignore line if "#" symbol
+        if(*start == '\0' || *start == '#') continue;
+
+
+        switch(param_count) {
+            case 0:
+                if(sscanf(start, "%lf", &param->dx) != 1) ok = 0;
+                break;
+            case 1:
+                if(sscanf(start, "%lf", &param->dy) != 1) ok = 0;
+                break;
+            case 2:
+                if(sscanf(start, "%lf", &param->dt) != 1) ok = 0;
+                break;
+            case 3:
+                if(sscanf(start, "%lf", &param->max_t) != 1) ok = 0;
+                break;
+            case 4:
+                if(sscanf(start, "%lf", &param->g) != 1) ok = 0;
+                break;
+            case 5:
+                if(sscanf(start, "%lf", &param->gamma) != 1) ok = 0;
+                break;
+            case 6:
+                if(sscanf(start, "%d", &param->source_type) != 1) ok = 0;
+                break;
+            case 7:
+                if(sscanf(start, "%d", &param->boundary_type) != 1) ok = 0;
+                break;
+            case 8:
+                if(sscanf(start, "%d", &param->sampling_rate) != 1) ok = 0;
+                break;
+            case 9: {
+                char temp[MAX_PATH_LENGTH];
+                // Extraire le premier mot non-commenté
+                token = strtok(start, " \t\n#");
+                if(!token || strlen(token) >= MAX_PATH_LENGTH) {
+                    ok = 0;
+                    break;
+                }
+                strncpy(temp, token, MAX_PATH_LENGTH-1);
+                temp[MAX_PATH_LENGTH-1] = '\0';
+                
+                if (strlen(INPUT_DIR) + strlen(temp) + 1 > MAX_PATH_LENGTH) {
+                    printf("Error: Path too long for input_h_filename\n");
+                    ok = 0;
+                } else {
+                    strcpy(param->input_h_filename, "../../"INPUT_DIR);
+                    strcat(param->input_h_filename, temp);
+                }
+                break;
+            }
+            case 10: {
+                token = strtok(start, " \t\n#");
+                if(!token || strlen(token) >= 256) {
+                    ok = 0;
+                    break;
+                }
+                strncpy(param->output_eta_filename, token, 255);
+                param->output_eta_filename[255] = '\0';
+                break;
+            }
+            case 11: {
+                token = strtok(start, " \t\n#");
+                if(!token || strlen(token) >= 256) {
+                    ok = 0;
+                    break;
+                }
+                strncpy(param->output_u_filename, token, 255);
+                param->output_u_filename[255] = '\0';
+                break;
+            }
+            case 12: {
+                token = strtok(start, " \t\n#");
+                if(!token || strlen(token) >= 256) {
+                    ok = 0;
+                    break;
+                }
+                strncpy(param->output_v_filename, token, 255);
+                param->output_v_filename[255] = '\0';
+                break;
+            }
+        }
+        param_count++;
+    }
+
+    fclose(fp);
+
+    // Check all parameters read
+    if(!ok || param_count != 13) {
+        printf("Error: Could not read one or more parameters in '%s'\n", full_path);
+        printf("Expected 13 parameters, got %d\n", param_count);
+        return 1;
+    }
+
+    return 0;
 }
+
 
 void print_parameters(const struct parameters *param)
 {
@@ -104,9 +180,9 @@ int write_data(const data_t *data, const char *filename, int step)
 {
   char out[MAX_PATH_LENGTH];
   if(step < 0)
-    sprintf(out, "output/%s.dat", filename);
+    sprintf(out, "../../output/%s.dat", filename);
   else
-    sprintf(out, "output/%s_%d.dat", filename, step);
+    sprintf(out, "../../output/%s_%d.dat", filename, step);
   FILE *fp = fopen(out, "wb");
   if(!fp) {
     printf("Error: Could not open output data file '%s'\n", out);
@@ -134,9 +210,9 @@ int write_data_vtk(const data_t *data, const char *name,
 
   char out[MAX_PATH_LENGTH];
  if(step < 0)
-    sprintf(out, "output/%s.vti", filename);
+    sprintf(out, "../../output/%s.vti", filename);
   else
-    sprintf(out, "output/%s_%d.vti", filename, step);
+    sprintf(out, "../../output/%s_%d.vti", filename, step);
 
   FILE *fp = fopen(out, "wb");
   if(!fp) {
@@ -181,7 +257,7 @@ int write_manifest_vtk(const char *filename, double dt, int nt,
                        int sampling_rate)
 {
   char out[MAX_PATH_LENGTH];
-  sprintf(out, "output/%s.pvd", filename);
+  sprintf(out, "../../output/%s.pvd", filename);
 
    FILE *fp = fopen(out, "wb");
   if(!fp) {

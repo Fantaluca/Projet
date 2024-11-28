@@ -21,7 +21,7 @@
 /*-------------------*/
 /*   Define Macros   */
 /*-------------------*/
-#define INPUT_DIR "../input_data/base_case/"
+#define INPUT_DIR "../../input_data/base_case/"
 #define MAX_PATH_LENGTH 512
 
 #ifndef M_PI

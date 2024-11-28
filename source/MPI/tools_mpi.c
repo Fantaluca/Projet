@@ -1,4 +1,4 @@
-#include "shallow_MPI.h"
+#include "shallow_mpi.h"
 
 
 int read_parameters(parameters_t *param, const char *filename) {
@@ -540,4 +540,3 @@ void print_progress(int current_step, int total_steps, double start_time, MPITop
         fflush(stdout);
     }
 }
-

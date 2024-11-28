@@ -1,4 +1,4 @@
-#include "shallow_OMP.h"
+#include "shallow_omp.h"
 
 double interpolate_data(const data_t *data, double x, double y) {
     int i = (int)(x / data->dx);
@@ -36,21 +36,35 @@ double interpolate_data(const data_t *data, double x, double y) {
 }
 
 void update_eta(int nx, int ny, const parameters_t param, all_data_t *all_data) {
-    #pragma omp parallel for collapse(2)
-    for(int i = 0; i < nx; i++) {
-        for(int j = 0; j < ny; j++) {
-            double h_ij = GET(all_data->h_interp, i, j);
-            double c1 = param.dt * h_ij;
+    #pragma omp parallel for
+    for (int i = 0; i < nx; i++) {
+        for (int j = 0; j < ny; j++) {
+            // Check boundaries to prevent out-of-bounds access
+            double h_ui_plus_1_j = (i < nx - 1) ? GET(all_data->h_interp, i + 1, j) : GET(all_data->h_interp, i, j);
+            double h_ui_j = GET(all_data->h_interp, i, j);
+            double h_vi_j_plus_1 = (j < ny - 1) ? GET(all_data->h_interp, i, j + 1) : GET(all_data->h_interp, i, j);
+            double h_vi_j = GET(all_data->h_interp, i, j);
+
+            double u_ip1_j = (i < nx - 1) ? GET(all_data->u, i + 1, j) : GET(all_data->u, i, j);
+            double u_i_j = GET(all_data->u, i, j);
+            double v_i_jp1 = (j < ny - 1) ? GET(all_data->v, i, j + 1) : GET(all_data->v, i, j);
+            double v_i_j = GET(all_data->v, i, j);
+
+            double c1_x = param.dt / param.dx;
+            double c1_y = param.dt / param.dy;
+
             double eta_ij = GET(all_data->eta, i, j)
-                - c1 / param.dx * (GET(all_data->u, i + 1, j) - GET(all_data->u, i, j))
-                - c1 / param.dy * (GET(all_data->v, i, j + 1) - GET(all_data->v, i, j));
+                - c1_x * (h_ui_plus_1_j * u_ip1_j - h_ui_j * u_i_j)
+                - c1_y * (h_vi_j_plus_1 * v_i_jp1 - h_vi_j * v_i_j);
+
             SET(all_data->eta, i, j, eta_ij);
         }
     }
 }
 
+
 void update_velocities(int nx, int ny, const parameters_t param, all_data_t *all_data) {
-    #pragma omp parallel for collapse(2)
+    #pragma omp parallel for
     for(int i = 0; i < nx; i++) {
         for(int j = 0; j < ny; j++) {
             double c1 = param.dt * param.g;
@@ -74,7 +88,7 @@ void boundary_source_condition(int n, int nx, int ny, const parameters_t param, 
         // sinusoidal velocity on top boundary
         double A = 5;
         double f = 1. / 20.;
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for
         for(int i = 0; i < nx; i++) {
             for(int j = 0; j < ny; j++) {
                 SET(all_data->u, 0, j, 0.);
@@ -146,7 +160,7 @@ void boundary_source_condition(int n, int nx, int ny, const parameters_t param, 
 }
 
 void interp_bathy(int nx, int ny, const parameters_t param, all_data_t *all_data) {
-    #pragma omp parallel for collapse(2)
+    #pragma omp parallel for
     for(int i = 0; i < nx; i++) {
         for(int j = 0; j < ny; j++) {
             double x = i * param.dx;

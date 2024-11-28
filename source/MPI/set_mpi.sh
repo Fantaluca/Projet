@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define number of processes
-export NB_PROC=5
+export NB_PROC=1
 
 # Define MPI paths if needed (uncomment and modify if using custom MPI installation)
 #export MPI_ROOT=/usr/local/mpi

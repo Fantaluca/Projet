@@ -34,12 +34,13 @@ typedef struct {
     double dx, dy, dt, max_t;
     double g, gamma;
     int source_type;
+    int boundary_type;
     int sampling_rate;
     char input_h_filename[MAX_PATH_LENGTH];
     char output_eta_filename[MAX_PATH_LENGTH];
     char output_u_filename[MAX_PATH_LENGTH];
     char output_v_filename[MAX_PATH_LENGTH];
-}parameters_t;
+}parameters_t ;
 
 typedef struct {
     double *values;

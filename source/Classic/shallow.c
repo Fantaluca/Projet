@@ -47,20 +47,32 @@ double update_eta(int nx,
                   data_t *u, 
                   data_t *v, 
                   data_t *eta, 
-                  data_t *h_interp){
+                  data_t *h_interp) {
 
-  for(int i = 0; i < nx; i++) {
-    for(int j = 0; j < ny ; j++) {
-      // TODO: this does not evaluate h at the correct locations
-      double h_ij = GET(h_interp, i, j);
-      double c1 = param.dt * h_ij;
+  for (int i = 0; i < nx; i++) {
+    for (int j = 0; j < ny; j++) {
+      double h_ui_plus_1_j = (i < nx - 1) ? GET(h_interp, i + 1, j) : GET(h_interp, i, j);
+      double h_ui_j = GET(h_interp, i, j);
+      double h_vi_j_plus_1 = (j < ny - 1) ? GET(h_interp, i, j + 1) : GET(h_interp, i, j);
+      double h_vi_j = GET(h_interp, i, j);
+
+      double u_ip1_j = (i < nx - 1) ? GET(u, i + 1, j) : GET(u, i, j);
+      double u_i_j = GET(u, i, j);
+      double v_i_jp1 = (j < ny - 1) ? GET(v, i, j + 1) : GET(v, i, j);
+      double v_i_j = GET(v, i, j);
+
+      double c1_x = param.dt / param.dx;
+      double c1_y = param.dt / param.dy;
+
       double eta_ij = GET(eta, i, j)
-        - c1 / param.dx * (GET(u, i + 1, j) - GET(u, i, j))
-        - c1 / param.dy * (GET(v, i, j + 1) - GET(v, i, j));
+        - c1_x * (h_ui_plus_1_j * u_ip1_j - h_ui_j * u_i_j)
+        - c1_y * (h_vi_j_plus_1 * v_i_jp1 - h_vi_j * v_i_j);
+
       SET(eta, i, j, eta_ij);
     }
   }
 }
+
 
 double update_velocities(int nx, 
                          int ny, 
@@ -229,6 +241,7 @@ int main(int argc, char **argv){
       printf("Computing step %d/%d (ETA: %g seconds)     \r", n, nt, eta);
       fflush(stdout);
     }
+    
 
     // output solution
     if(param.sampling_rate && !(n % param.sampling_rate)){

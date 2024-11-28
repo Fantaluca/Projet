@@ -1,4 +1,4 @@
-#include "shallow_OMP.h"
+#include "shallow_omp.h"
 
 
 int main(int argc, char **argv) {

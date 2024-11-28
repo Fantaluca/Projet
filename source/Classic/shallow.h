@@ -33,6 +33,7 @@ struct parameters {
     double g, gamma;
     int source_type;
     int sampling_rate;
+    int boundary_type;
     char input_h_filename[MAX_PATH_LENGTH];
     char output_eta_filename[MAX_PATH_LENGTH];
     char output_u_filename[MAX_PATH_LENGTH];
@@ -49,9 +50,9 @@ void interp_bathy(int nx, int ny, const struct parameters param, data_t *h_inter
 int read_parameters(struct parameters *param, const char *filename);
 void print_parameters(const struct parameters *param);
 int read_data(data_t *data, const char *filename);
-void init_data(data_t *data, int nx, int ny, double dx, double dy, double initial_value);
-void write_data_vtk(const data_t *data, const char *name, const char *filename, int step);
-void write_manifest_vtk(const char *filename, double dt, int nt, int sampling_rate);
+int init_data(data_t *data, int nx, int ny, double dx, double dy, double initial_value);
+int write_data_vtk(const data_t *data, const char *name, const char *filename, int step);
+int write_manifest_vtk(const char *filename, double dt, int nt, int sampling_rate);
 void free_data(data_t *data);
 
 #endif // SHALLOW_H

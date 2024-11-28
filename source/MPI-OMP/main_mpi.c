@@ -11,6 +11,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    int max_threads = 4;  // Vous pouvez adapter ce nombre
+    omp_set_num_threads(max_threads);
+
+    
+
     //---------------------------------//
     // INITIALIZE MPI, PARAMS AND DATA //
     //---------------------------------//
@@ -71,13 +76,25 @@ int main(int argc, char **argv) {
     // Interpolate bathymetry
     interp_bathy(param, nx_glob, ny_glob, &all_data, gdata, &topo);
 
+    #pragma omp parallel
+    {
+        int thread_id = omp_get_thread_num();
+        int num_threads = omp_get_num_threads();
+        if (thread_id == 0) {
+            printf("MPI Process %d: OpenMP configured with %d threads\n", topo.rank, num_threads);
+        }
+    }
+
     // Loop over timestep
     double start = GET_TIME(); 
     for (int n = 0; n < nt; n++) {
       
       //boundary_source_condition(n, nx_glob, ny_glob, param, &all_data, gdata, &topo);
-      boundary_conditions(param , &all_data, &topo);
+      
+      boundary_conditions(param, &all_data, &topo);
+
       apply_source(n, nx_glob, ny_glob, param, &all_data, gdata, &topo);
+    
 
       if (param.sampling_rate && !(n % param.sampling_rate)) 
         gather_and_assemble_data(param, all_data, gdata, &topo, nx_glob, ny_glob, n);
