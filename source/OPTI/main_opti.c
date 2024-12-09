@@ -71,19 +71,18 @@ int main(int argc, char **argv) {
     // Interpolate bathymetry
     interp_bathy(param, nx_glob, ny_glob, all_data, gdata, &topo);
 
-    #pragma omp target enter data \
-      map(alloc: all_data->eta[0:1]) \
-      map(alloc: all_data->u[0:1]) \
-      map(alloc: all_data->v[0:1]) \
-      map(to: all_data->h[0:1]) \
-      map(to: all_data->h_interp[0:1])
+    double *eta_gpu = all_data->eta->vals;
+    double *u_gpu = all_data->u->vals;
+    double *v_gpu = all_data->v->vals;
+    double *h_gpu = all_data->h->vals;
+    double *h_interp_gpu = all_data->h_interp->vals;
 
     #pragma omp target enter data \
-      map(to: all_data->h->vals[0:all_data->h->total_size]) \
-      map(to: all_data->h_interp->vals[0:all_data->h_interp->total_size]) \
-      map(alloc: all_data->eta->vals[0:all_data->eta->total_size]) \
-      map(alloc: all_data->u->vals[0:all_data->u->total_size]) \
-      map(alloc: all_data->v->vals[0:all_data->v->total_size])
+      map(alloc: eta_gpu[0:all_data->eta->total_size]) \
+      map(alloc: u_gpu[0:all_data->u->total_size]) \
+      map(alloc: v_gpu[0:all_data->v->total_size]) \
+      map(to: h_gpu[0:all_data->h->total_size]) \
+      map(to: h_interp_gpu[0:all_data->h_interp->total_size])
 
     // Loop over timestep
     double start = GET_TIME(); 
@@ -101,10 +100,9 @@ int main(int argc, char **argv) {
             #pragma omp target update from(all_data->eta[0:1], all_data->u[0:1], all_data->v[0:1])
             write_data_vtk(&all_data->eta, "water elevation", param.output_eta_filename, n);
         }
-
       
-      update_eta(param, all_data, gdata, &topo);
-      update_velocities(param, all_data, gdata, &topo);
+      update_eta(param, all_data, gdata, &topo, eta_gpu, u_gpu, v_gpu, h_interp_gpu);
+      update_velocities(param, all_data, gdata, &topo, eta_gpu, u_gpu, v_gpu);
 
       print_progress(n, nt, start, &topo);
       
@@ -117,18 +115,11 @@ int main(int argc, char **argv) {
   }
 
   #pragma omp target exit data \
-    map(from: all_data->eta->vals[0:all_data->eta->total_size]) \
-    map(from: all_data->u->vals[0:all_data->u->total_size]) \
-    map(from: all_data->v->vals[0:all_data->v->total_size]) \
-    map(release: all_data->h->vals[0:all_data->h->total_size]) \
-    map(release: all_data->h_interp->vals[0:all_data->h_interp->total_size])
-
-  #pragma omp target exit data \
-    map(from: all_data->eta[0:1]) \
-    map(from: all_data->u[0:1]) \
-    map(from: all_data->v[0:1]) \
-    map(release: all_data->h[0:1]) \
-    map(release: all_data->h_interp[0:1])
+    map(from: eta_gpu[0:all_data->eta->total_size]) \
+    map(from: u_gpu[0:all_data->u->total_size]) \
+    map(from: v_gpu[0:all_data->v->total_size]) \
+    map(release: h_gpu[0:all_data->h->total_size]) \
+    map(release: h_interp_gpu[0:all_data->h_interp->total_size])
       
   // Clean up all variables
   MPI_Barrier(topo.cart_comm);

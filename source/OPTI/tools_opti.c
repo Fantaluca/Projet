@@ -294,41 +294,11 @@ int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, in
     data->dy = dy;
     data->total_size = (size_t)nx * (size_t)ny;
 
-    // Allouer le tableau principal
     data->vals = (double*)calloc(data->total_size, sizeof(double));
     if (data->vals == NULL) return 1;
 
-    // Initialiser avec la valeur donnée
     for (int i = 0; i < data->total_size; i++) {
         data->vals[i] = val;
-    }
-
-    // Allouer les bords si nécessaire
-    if (has_edges) {
-        data->edge_vals = calloc(NEIGHBOR_NUM, sizeof(double*));
-        if (data->edge_vals == NULL) {
-            free(data->vals);
-            return 1;
-        }
-
-        // Allouer chaque bord
-        data->edge_vals[LEFT] = calloc(ny, sizeof(double));
-        data->edge_vals[RIGHT] = calloc(ny, sizeof(double));
-        data->edge_vals[UP] = calloc(nx, sizeof(double));
-        data->edge_vals[DOWN] = calloc(nx, sizeof(double));
-
-        if (!data->edge_vals[LEFT] || !data->edge_vals[RIGHT] ||
-            !data->edge_vals[UP] || !data->edge_vals[DOWN]) {
-            // Nettoyer en cas d'échec
-            for (int i = 0; i < NEIGHBOR_NUM; i++) {
-                if (data->edge_vals[i]) free(data->edge_vals[i]);
-            }
-            free(data->edge_vals);
-            free(data->vals);
-            return 1;
-        }
-    } else {
-        data->edge_vals = NULL;
     }
 
     return 0;
@@ -373,16 +343,6 @@ void free_data(data_t *data, int has_edges) {
         data->vals = NULL;
     }
 
-    if (has_edges && data->edge_vals != NULL) {
-        for (int i = 0; i < NEIGHBOR_NUM; i++) {
-            if (data->edge_vals[i] != NULL) {
-                free(data->edge_vals[i]);
-                data->edge_vals[i] = NULL;
-            }
-        }
-        free(data->edge_vals);
-        data->edge_vals = NULL;
-    }
 
     free(data);
 }
@@ -473,7 +433,7 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
     if (topo->coords[0] < (nx_glob % topo->dims[0])) local_nx++;
     if (topo->coords[1] < (ny_glob % topo->dims[1])) local_ny++;
 
-    if (topo->rank ==0){
+    if (topo->rank == 0){
       printf("Rank %d: Global dimensions: %dx%d, Local dimensions: %dx%d\n",
             topo->cart_rank, nx_glob, ny_glob, local_nx, local_ny);
       fflush(stdout);

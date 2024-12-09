@@ -32,7 +32,11 @@
 void update_eta(const parameters_t param, 
                 all_data_t *all_data,
                 gather_data_t *gdata,
-                MPITopology *topo) {
+                MPITopology *topo,
+                double *eta_gpu,
+                double *u_gpu,
+                double *v_gpu,
+                double *h_interp_gpu) {
 
     // Create separate request arrays for sends and receives
     MPI_Request request_recv[4] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL, 
@@ -116,32 +120,31 @@ void update_eta(const parameters_t param,
         return;
     }
 
-    // Update eta
     #pragma omp target teams distribute parallel for collapse(2) \
-        map(to: all_data->h[0:all_data->h_interp->total_size], \
-                all_data->u[0:all_data->u->total_size], \
-                all_data->v[0:all_data->v->total_size]) \
-        map(tofrom: all_data->eta[0:all_data->eta->total_size]) 
+        map(to: h_interp_gpu[0:nx*ny],                                \
+                u_gpu[0:(nx+1)*ny],                            \
+                v_gpu[0:nx*(ny+1)],                            \
+                recv_right[0:ny],                              \
+                recv_up[0:nx])                                 \
+        map(tofrom: eta_gpu[0:nx*ny])
     for (int j = 0; j < ny; j++) {
         for (int i = 0; i < nx; i++) {
-            double h_ij = GET(all_data->h_interp, i, j);
+            double h_ij = h_interp_gpu[nx * j + i];
             if (h_ij <= 0) continue;
 
-            // Get u values with proper boundary handling
-            double u_i = GET(all_data->u, i, j);
+            double u_i = u_gpu[nx * j + i];
             double u_ip1;
             if (i < nx-1) {
-                u_ip1 = GET(all_data->u, i+1, j);
+                u_ip1 = u_gpu[nx * j + (i+1)];
             } else {
                 u_ip1 = (topo->neighbors[RIGHT] != MPI_PROC_NULL) ? 
                         recv_right[j] : u_i;
             }
 
-            // Get v values with proper boundary handling
-            double v_j = GET(all_data->v, i, j);
+            double v_j = v_gpu[nx * j + i];
             double v_jp1;
             if (j < ny-1) {
-                v_jp1 = GET(all_data->v, i, j+1);
+                v_jp1 = v_gpu[nx * j + i + nx]; 
             } else {
                 v_jp1 = (topo->neighbors[UP] != MPI_PROC_NULL) ? 
                         recv_up[i] : v_j;
@@ -150,9 +153,9 @@ void update_eta(const parameters_t param,
             double du_dx = (u_ip1 - u_i) / param.dx;
             double dv_dy = (v_jp1 - v_j) / param.dy;
 
-            double eta_old = GET(all_data->eta, i, j);
+            double eta_old = eta_gpu[nx * j + i];
             double eta_new = eta_old - param.dt * h_ij * (du_dx + dv_dy);
-            SET(all_data->eta, i, j, eta_new);
+            eta_gpu[nx * j + i] = eta_new;
         }
     }
 
@@ -175,7 +178,10 @@ void update_eta(const parameters_t param,
 void update_velocities(const parameters_t param,
                       all_data_t *all_data,
                       gather_data_t *gdata,
-                      MPITopology *topo) {
+                      MPITopology *topo,
+                      double *eta_gpu,
+                      double *u_gpu,
+                      double *v_gpu) {
 
     MPI_Request request_recv[4] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL,
                                   MPI_REQUEST_NULL, MPI_REQUEST_NULL};
@@ -255,65 +261,70 @@ void update_velocities(const parameters_t param,
 
     // Update u (includes one extra point in x direction)
     #pragma omp target teams distribute parallel for collapse(2) \
-    map(to: all_data->eta->vals[0:all_data->eta->total_size]) \
-    map(tofrom: all_data->u->vals[0:all_data->u->total_size])
+        map(to: eta_gpu[0:nx*ny])                              \
+        map(tofrom: u_gpu[0:(nx+1)*ny])                        \
+        map(to: recv_right[0:ny], recv_left[0:ny])
     for (int j = 0; j < ny; j++) {
         for (int i = 0; i < nx + 1; i++) {
             double eta_ij;
             double eta_im1j;
 
             if (i < nx) {
-                eta_ij = GET(all_data->eta, i, j);
+                eta_ij = eta_gpu[nx * j + i];
             } else if (topo->neighbors[RIGHT] != MPI_PROC_NULL) {
                 eta_ij = recv_right[j];
             } else {
-                eta_ij = GET(all_data->eta, nx-1, j);  // Extrapolate at boundary
+                eta_ij = eta_gpu[nx * j + (nx-1)];
             }
 
             if (i > 0) {
-                eta_im1j = GET(all_data->eta, i-1, j);
+                eta_im1j = eta_gpu[nx * j + (i-1)];
             } else if (topo->neighbors[LEFT] != MPI_PROC_NULL) {
                 eta_im1j = recv_left[j];
             } else {
-                eta_im1j = eta_ij;  // Extrapolate at boundary
+                eta_im1j = eta_ij;
             }
 
-            double u_ij = GET(all_data->u, i, j);
+            double u_ij = u_gpu[nx * j + i];  
             double new_u = (1.0 - c2) * u_ij - c1 / dx * (eta_ij - eta_im1j);
-            SET(all_data->u, i, j, new_u);
+            u_gpu[nx * j + i] = new_u;      
         }
     }
+    all_data->eta->vals = eta_gpu;
+    all_data->u->vals = u_gpu;
 
     // Update v (includes one extra point in y direction)
     #pragma omp target teams distribute parallel for collapse(2) \
-    map(to: all_data->eta->vals[0:all_data->eta->total_size]) \
-    map(tofrom: all_data->v->vals[0:all_data->v->total_size])
-        for (int j = 0; j < ny + 1; j++) {
+        map(to: eta_gpu[0:nx*ny])                              \
+        map(tofrom: v_gpu[0:nx*(ny+1)])                       \
+        map(to: recv_up[0:nx], recv_down[0:nx])
+    for (int j = 0; j < ny + 1; j++) {
         for (int i = 0; i < nx; i++) {
             double eta_ij;
             double eta_ijm1;
 
             if (j < ny) {
-                eta_ij = GET(all_data->eta, i, j);
+                eta_ij = eta_gpu[nx * j + i];
             } else if (topo->neighbors[UP] != MPI_PROC_NULL) {
                 eta_ij = recv_up[i];
             } else {
-                eta_ij = GET(all_data->eta, i, ny-1);  
+                eta_ij = eta_gpu[nx * (ny-1) + i];
             }
 
             if (j > 0) {
-                eta_ijm1 = GET(all_data->eta, i, j-1);
+                eta_ijm1 = eta_gpu[nx * (j-1) + i];
             } else if (topo->neighbors[DOWN] != MPI_PROC_NULL) {
                 eta_ijm1 = recv_down[i];
             } else {
-                eta_ijm1 = eta_ij; 
+                eta_ijm1 = eta_ij;
             }
 
-            double v_ij = GET(all_data->v, i, j);
+            double v_ij = v_gpu[nx * j + i];
             double new_v = (1.0 - c2) * v_ij - c1 / dy * (eta_ij - eta_ijm1);
-            SET(all_data->v, i, j, new_v);
+            v_gpu[nx * j + i] = new_v;
         }
     }
+    all_data->v->vals = v_gpu;
 
     // Wait for all sends to complete
     if (send_count > 0) {

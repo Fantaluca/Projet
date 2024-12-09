@@ -74,7 +74,6 @@ typedef struct {
 
 typedef struct {
     double *vals;
-    double **edge_vals;
     int nx, ny;
     double dx, dy;
     size_t total_size;  
@@ -115,9 +114,12 @@ typedef struct {
 
 
 #ifdef _OPENMP
-#pragma omp declare mapper(data_t v) \
-    map(v.nx, v.ny, v.dx, v.dy, v.total_size) \
-    map(v.vals[0:v.total_size])
+#pragma omp declare mapper(data_t data)                    \
+    map(to:data)                                          \
+    map(to:data.nx, data.ny)                             \
+    map(to:data.dx, data.dy)                             \
+    map(to:data.total_size)                              \
+    map(to:data.vals[0:data.total_size])
 #endif
 
 
@@ -127,15 +129,22 @@ typedef struct {
 /*---------------------------*/
 
 /*------ From "shallow_MPI.c" ------*/
-void update_velocities(const parameters_t param,
-                       all_data_t *all_data,
-                       gather_data_t *gdata,
-                       MPITopology *topo);
-
 void update_eta(const parameters_t param, 
                 all_data_t *all_data,
                 gather_data_t *gdata,
-                MPITopology *topo);
+                MPITopology *topo,
+                double *eta_gpu,
+                double *u_gpu,
+                double *v_gpu,
+                double *h_interp_gpu);
+
+void update_velocities(const parameters_t param,
+                      all_data_t *all_data,
+                      gather_data_t *gdata,
+                      MPITopology *topo,
+                      double *eta_gpu,
+                      double *u_gpu,
+                      double *v_gpu);
 
 void boundary_conditions(const parameters_t param, all_data_t *all_data,
                               MPITopology *topo);
