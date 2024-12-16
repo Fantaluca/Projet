@@ -1,0 +1,22 @@
+# Configuration spatiale
+25    # dx (m)
+25    # dy (m)
+
+# Configuration temporelle
+0.05 # dt (s)
+400  # max_t (s)
+
+# Paramètres physiques
+9.81    # g (m/s²)
+2e-5    # gamma (1/s)
+
+# Configuration de la simulation
+4    # source_type
+2    # boundary type
+40   # sampling_rate
+
+# Fichiers d'entrée/sortie
+h_simple.dat      # fichier bathymétrie
+eta_simple        # fichier sortie élévation
+u_simple          # fichier sortie vitesse u
+v_simple          # fichier sortie vitesse v
