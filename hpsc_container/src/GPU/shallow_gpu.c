@@ -36,49 +36,82 @@ double interpolate_data(const data_t *data, double x, double y) {
 }
 
 void update_eta(int nx, int ny, const parameters_t param, all_data_t *all_data) {
+    double* eta_gpu = all_data->eta->values;
+    double* h_interp_gpu = all_data->h_interp->values;
+    double* u_gpu = all_data->u->values;
+    double* v_gpu = all_data->v->values;
 
     #pragma omp target teams distribute parallel for collapse(2) \
-        map(tofrom: *all_data->eta) \
-        map(to: *all_data->h_interp, *all_data->u, *all_data->v)
+        map(tofrom: eta_gpu[0:nx*ny]) \
+        map(to: h_interp_gpu[0:nx*ny], u_gpu[0:(nx+1)*ny], v_gpu[0:nx*(ny+1)])
     for(int i = 0; i < nx; i++) {
         for(int j = 0; j < ny; j++) {
-            double h_ij = GET(all_data->h_interp, i, j);
+            double h_ij = h_interp_gpu[nx * j + i];
             double c1 = param.dt * h_ij;
-            double eta_ij = GET(all_data->eta, i, j)
-                - c1 / param.dx * (GET(all_data->u, i + 1, j) - GET(all_data->u, i, j))
-                - c1 / param.dy * (GET(all_data->v, i, j + 1) - GET(all_data->v, i, j));
-            SET(all_data->eta, i, j, eta_ij);
+            
+            // u est sur une grille décalée (nx+1) x ny
+            double u_i = u_gpu[(nx+1) * j + i];
+            double u_ip1 = u_gpu[(nx+1) * j + (i+1)];
+            
+            // v est sur une grille décalée nx x (ny+1)
+            double v_j = v_gpu[nx * j + i];
+            double v_jp1 = v_gpu[nx * (j+1) + i];
+            
+            eta_gpu[nx * j + i] = eta_gpu[nx * j + i] 
+                - c1 * ((u_ip1 - u_i) / param.dx 
+                     + (v_jp1 - v_j) / param.dy);
         }
     }
 }
 
 void update_velocities(int nx, int ny, const parameters_t param, all_data_t *all_data) {
+    double* u_gpu = all_data->u->values;
+    double* v_gpu = all_data->v->values;
+    double* eta_gpu = all_data->eta->values;
+
+    // Pour u: grille (nx+1) x ny
     #pragma omp target teams distribute parallel for collapse(2) \
-        map(tofrom: *all_data->u, *all_data->v) \
-        map(to: *all_data->eta)
-    for(int i = 0; i < nx; i++) {
+        map(tofrom: u_gpu[0:(nx+1)*ny]) \
+        map(to: eta_gpu[0:nx*ny])
+    for(int i = 0; i < nx + 1; i++) {
         for(int j = 0; j < ny; j++) {
             double c1 = param.dt * param.g;
             double c2 = param.dt * param.gamma;
-            double eta_ij = GET(all_data->eta, i, j);
-            double eta_imj = GET(all_data->eta, (i == 0) ? 0 : i - 1, j);
-            double eta_ijm = GET(all_data->eta, i, (j == 0) ? 0 : j - 1);
             
-            // Récupération des anciennes vitesses
-            double u_old = GET(all_data->u, i, j);
-            double v_old = GET(all_data->v, i, j);
+            // Gestion des conditions aux limites pour eta
+            double eta_ij = (i < nx) ? eta_gpu[nx * j + i] 
+                                   : eta_gpu[nx * j + (nx-1)];
+            double eta_im1j = (i > 0) ? eta_gpu[nx * j + (i-1)]
+                                     : eta_gpu[nx * j + 0];
             
-            // Calcul des nouvelles vitesses avec Coriolis
-            double u_ij = (1. - c2) * u_old 
-                - c1 / param.dx * (eta_ij - eta_imj)
-                + param.dt * param.f * v_old;  // Terme de Coriolis
-                
-            double v_ij = (1. - c2) * v_old
-                - c1 / param.dy * (eta_ij - eta_ijm)
-                - param.dt * param.f * u_old;  // Terme de Coriolis
+            double u_old = u_gpu[(nx+1) * j + i];
+            double new_u = (1. - c2) * u_old 
+                - c1 / param.dx * (eta_ij - eta_im1j);
             
-            SET(all_data->u, i, j, u_ij);
-            SET(all_data->v, i, j, v_ij);
+            u_gpu[(nx+1) * j + i] = new_u;
+        }
+    }
+
+    // Pour v: grille nx x (ny+1)
+    #pragma omp target teams distribute parallel for collapse(2) \
+        map(tofrom: v_gpu[0:nx*(ny+1)]) \
+        map(to: eta_gpu[0:nx*ny])
+    for(int i = 0; i < nx; i++) {
+        for(int j = 0; j < ny + 1; j++) {
+            double c1 = param.dt * param.g;
+            double c2 = param.dt * param.gamma;
+            
+            // Gestion des conditions aux limites pour eta
+            double eta_ij = (j < ny) ? eta_gpu[nx * j + i]
+                                   : eta_gpu[nx * (ny-1) + i];
+            double eta_ijm1 = (j > 0) ? eta_gpu[nx * (j-1) + i]
+                                     : eta_gpu[nx * 0 + i];
+            
+            double v_old = v_gpu[nx * j + i];
+            double new_v = (1. - c2) * v_old
+                - c1 / param.dy * (eta_ij - eta_ijm1);
+            
+            v_gpu[nx * j + i] = new_v;
         }
     }
 }

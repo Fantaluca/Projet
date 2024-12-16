@@ -7,9 +7,9 @@ PARAM_FILE="../../input_data/base_case/param_simple.txt"
 BIN_PATH="../../bin/shallow_opti"
 
 # OpenMP memory settings
-export LIBOMPTARGET_STACK_SIZE=8192
-export LIBOMPTARGET_HEAP_SIZE=8192
 export OMP_TARGET_OFFLOAD=MANDATORY
+export LIBOMPTARGET_PROFILE=0
+
 
 # Get MPI include path
 MPI_INCLUDE_PATH=$(mpicc -show | grep -o -- '-I[^ ]*' | tr '\n' ' ')

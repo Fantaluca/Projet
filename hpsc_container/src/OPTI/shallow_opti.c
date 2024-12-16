@@ -67,13 +67,20 @@ void update_eta(const parameters_t param,
     double *recv_down = calloc(nx, sizeof(double));
     double *recv_up = calloc(nx, sizeof(double));
 
-    // Vérification des allocations
+   // VCheck alocation
     if (!send_left || !send_right || !send_down || !send_up ||
         !recv_left || !recv_right || !recv_down || !recv_up) {
         fprintf(stderr, "Error: Failed to allocate buffers\n");
-        goto cleanup;
+        if (send_left) free(send_left);
+        if (send_right) free(send_right);
+        if (send_down) free(send_down);
+        if (send_up) free(send_up);
+        if (recv_left) free(recv_left);
+        if (recv_right) free(recv_right);
+        if (recv_down) free(recv_down);
+        if (recv_up) free(recv_up);
+        return;
     }
-
     // Prepare send buffers
     for (int j = 0; j < ny; j++) {
         send_left[j] = GET(all_data->u, 0, j);
@@ -125,7 +132,16 @@ void update_eta(const parameters_t param,
     if (!all_data->eta->vals || !all_data->u->vals || 
         !all_data->v->vals || !all_data->h_interp->vals) {
         fprintf(stderr, "Error: null pointers in update_eta\n");
-        goto cleanup;
+        // Nettoyage des buffers alloués précédemment
+        if (send_left) free(send_left);
+        if (send_right) free(send_right);
+        if (send_down) free(send_down);
+        if (send_up) free(send_up);
+        if (recv_left) free(recv_left);
+        if (recv_right) free(recv_right);
+        if (recv_down) free(recv_down);
+        if (recv_up) free(recv_up);
+        return;
     }
 
     // Kernel OpenMP avec mapping corrigé
@@ -171,16 +187,6 @@ void update_eta(const parameters_t param,
         MPI_Waitall(send_count, request_send, status);
     }
 
-cleanup:
-    // Clean up
-    free(send_left);
-    free(send_right);
-    free(send_down);
-    free(send_up);
-    if (recv_left) free(recv_left);
-    if (recv_right) free(recv_right);
-    if (recv_down) free(recv_down);
-    if (recv_up) free(recv_up);
 }
 
 void update_velocities(const parameters_t param,

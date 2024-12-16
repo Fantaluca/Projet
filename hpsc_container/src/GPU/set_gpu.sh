@@ -7,8 +7,8 @@ BIN_PATH="../../shallow_gpu"
 
 # OpenMP settings
 export OMP_TARGET_OFFLOAD=MANDATORY
-export LIBOMPTARGET_STACK_SIZE=8192
-export LIBOMPTARGET_HEAP_SIZE=8192
+export LIBOMPTARGET_PROFILE=0
+
 
 # Compile
 echo "Starting compilation..."
