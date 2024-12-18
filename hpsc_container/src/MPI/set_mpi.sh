@@ -1,29 +1,46 @@
 #!/bin/bash
+set -e
 
-# Define number of processes
-export NB_PROC=1
+# Path settings
+BIN_PATH="../../bin"
+INPUT_PATH="../../input_data/base_case"
 
-# Define MPI paths if needed (uncomment and modify if using custom MPI installation)
-#export MPI_ROOT=/usr/local/mpi
-#export MPI_INCLUDE="$MPI_ROOT/include"
-#export MPI_LIB="$MPI_ROOT/lib"
+# Architecture settings
+export NB_PROC=8
 
-# Define paths
-SCRIPT_DIR="$( cd "$( dirname "${BASH_src[0]}" )" && pwd )"
-BIN_PATH="$SCRIPT_DIR/../../bin"
-mkdir -p "$BIN_PATH"
+# Function to clean up MPI processes
+cleanup() {
+    pkill -9 mpirun || true
+    pkill -9 orted || true  # Kill Open MPI daemon processes
+    sleep 2  # Attendre que tous les processus soient bien terminés
+}
+
+# Nettoyer les processus existants avant de commencer
+cleanup
+
+# Create temporary user if it doesn't exist
+TMP_USER="mpirunner"
+if ! id "$TMP_USER" &>/dev/null; then
+    useradd -M -r $TMP_USER
+fi
+
+# Give temporary permissions
+chown -R $TMP_USER:$TMP_USER /opt/hpsc_container
 
 # Compilation
-# If using custom MPI paths, use:
-# gcc -O3 -fopenmp -I$MPI_INCLUDE -L$MPI_LIB -o "$BIN_PATH/shallow_mpi" shallow_mpi.c tools_mpi.c main_mpi.c -lm -lmpi
-# Otherwise, use standard compilation:
-mpicc -O3 -fopenmp -o "$BIN_PATH/shallow_mpi" shallow_mpi.c tools_mpi.c main_mpi.c -lm 
+mpicc -O3 -fopenmp -o ${BIN_PATH}/shallow_mpi shallow_mpi.c tools_mpi.c main_mpi.c -lm
 
-# Check if compilation succeed
+# Execute as temporary user
 if [ $? -eq 0 ]; then
-    # Execution
-    mpirun -n $NB_PROC "$BIN_PATH/shallow_mpi" param_simple.txt
+    # Utiliser trap pour nettoyer si le script est interrompu
+    trap cleanup EXIT INT TERM
+    su $TMP_USER -c "mpirun -n $NB_PROC ${BIN_PATH}/shallow_mpi ${INPUT_PATH}/param_simple.txt"
 else
     echo "Compilation error"
     exit 1
 fi
+
+# Restore permissions
+chown -R root:root /opt/hpsc_container
+
+cleanup

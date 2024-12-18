@@ -1,5 +1,8 @@
 {
     "files.associations": {
+        "sampleDict": "cpp",
+        "controlDict": "cpp",
+        "blockMeshDict": "cpp",
         "shallow_OMP.h": "c",
         "time.h": "c",
         "stdio.h": "c",
@@ -7,7 +10,9 @@
         "compare": "c",
         "type_traits": "cpp",
         "chrono": "c",
-        "functional": "c"
+        "functional": "c",
+        "shallow_serial.h": "c",
+        "ctype.h": "c"
     },
     "C_Cpp.default.compilerPath": "C:\\Users\\lucas\\mingw64\\bin\\gcc.exe"
 }

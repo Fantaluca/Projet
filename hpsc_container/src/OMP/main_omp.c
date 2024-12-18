@@ -43,7 +43,9 @@ int main(int argc, char **argv) {
         if(param.sampling_rate && !(n % param.sampling_rate)) 
             write_data_vtk(all_data->eta, "water elevation", param.output_eta_filename, n);
 
-        boundary_source_condition(n, nx, ny, param, all_data);
+        boundary_conditions(nx, ny, param, all_data);
+        apply_source(n, nx, ny, param, all_data);
+
         update_eta(nx, ny, param, all_data);
         update_velocities(nx, ny, param, all_data);
 

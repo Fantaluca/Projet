@@ -8,6 +8,11 @@ BIN_PATH="../../bin/shallow_gpu"
 # OpenMP settings
 export OMP_TARGET_OFFLOAD=MANDATORY
 
+# Disable OpenMP profiling to prevent trace file creation
+unset LIBOMPTARGET_PROFILE
+unset OMP_TOOL_LIBRARIES
+unset OMP_TOOL
+
 # Compile
 echo "Starting compilation..."
 clang-18 -O3 \

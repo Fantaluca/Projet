@@ -2,4 +2,7 @@
 *.vti
 *.vtk
 *.exe
+*.pvd
+
+**/output/
 

@@ -1,7 +1,7 @@
 /*===========================================================
- * SHALLOW WATER EQUATIONS SOLVER - PARALLEL MPI
- * Tools Implementation File
- * Contains I/O, initialization, and cleanup routines
+ * SHALLOW WATER EQUATIONS SOLVER - PARALLEL MPI/OpenMP
+ * Implementation File
+ * Contains I/O, initialization, computation and cleanup routines
  ===========================================================*/
 
 #include "shallow_mpi.h"
@@ -90,27 +90,29 @@ int read_parameters(parameters_t *param, const char *filename) {
     return 0;
 }
 
-
 /**
  * Displays current simulation parameters
  * 
  * @param param Pointer to parameters structure
  */
-void print_parameters(const parameters_t *param)
-{
-  printf("Parameters:\n");
-  printf(" - grid spacing (dx, dy): %g m, %g m\n", param->dx, param->dy);
-  printf(" - time step (dt): %g s\n", param->dt);
-  printf(" - maximum time (max_t): %g s\n", param->max_t);
-  printf(" - gravitational acceleration (g): %g m/s^2\n", param->g);
-  printf(" - dissipation coefficient (gamma): %g 1/s\n", param->gamma);
-  printf(" - source type: %d\n", param->source_type);
-  printf(" - sampling rate: %d\n", param->sampling_rate);
-  printf(" - input bathymetry (h) file: '%s'\n", param->input_h_filename);
-  printf(" - output elevation (eta) file: '%s'\n", param->output_eta_filename);
-  printf(" - output velocity (u, v) files: '%s', '%s'\n",
-         param->output_u_filename, param->output_v_filename);
+void print_parameters(const parameters_t *param) {
+    printf("Parameters:\n");
+    printf(" - grid spacing (dx, dy): %g m, %g m\n", param->dx, param->dy);
+    printf(" - time step (dt): %g s\n", param->dt);
+    printf(" - maximum time (max_t): %g s\n", param->max_t);
+    printf(" - gravitational acceleration (g): %g m/s^2\n", param->g);
+    printf(" - dissipation coefficient (gamma): %g 1/s\n", param->gamma);
+    printf(" - source type: %d\n", param->source_type);
+    printf(" - sampling rate: %d\n", param->sampling_rate);
+    printf(" - input bathymetry (h) file: '%s'\n", param->input_h_filename);
+    printf(" - output elevation (eta) file: '%s'\n", param->output_eta_filename);
+    printf(" - output velocity (u, v) files: '%s', '%s'\n",
+           param->output_u_filename, param->output_v_filename);
 }
+
+/*===========================================================
+ * DATA STRUCTURE MANAGEMENT
+ ===========================================================*/
 
 /**
  * Reads data from binary file into data structure
@@ -119,47 +121,73 @@ void print_parameters(const parameters_t *param)
  * @param filename Input file path
  * @return 0 on success, 1 on failure
  */
-int read_data(data_t *data, const char *filename)
-{
-  FILE *fp = fopen(filename, "rb");
-
-  if(!fp) {
-    printf("Error: Could not open input data file '%s'\n", filename);
-    return 1;
-  }
-  
-  int ok = 1;
-  if(ok) ok = (fread(&data->nx, sizeof(int), 1, fp) == 1);
-  if(ok) ok = (fread(&data->ny, sizeof(int), 1, fp) == 1);
-  if(ok) ok = (fread(&data->dx, sizeof(double), 1, fp) == 1);
-  if(ok) ok = (fread(&data->dy, sizeof(double), 1, fp) == 1);
-
-  
-  if(ok) {
-    int N = data->nx * data->ny;
-    if(N <= 0) {
-      printf("Error: Invalid number of data points %d\n", N);
-      ok = 0;
+int read_data(data_t *data, const char *filename) {
+    FILE *fp = fopen(filename, "rb");
+    if(!fp) {
+        printf("Error: Could not open input data file '%s'\n", filename);
+        return 1;
     }
-    else {
-      data->vals = (double*)malloc(N * sizeof(double));
-      if(!data->vals) {
-        printf("Error: Could not allocate data (%d doubles)\n", N);
-        ok = 0;
-      }
-      else {
-        ok = (fread(data->vals, sizeof(double), N, fp) == N);
-      }
+    
+    int ok = 1;
+    if(ok) ok = (fread(&data->nx, sizeof(int), 1, fp) == 1);
+    if(ok) ok = (fread(&data->ny, sizeof(int), 1, fp) == 1);
+    if(ok) ok = (fread(&data->dx, sizeof(double), 1, fp) == 1);
+    if(ok) ok = (fread(&data->dy, sizeof(double), 1, fp) == 1);
+    
+    if(ok) {
+        int N = data->nx * data->ny;
+        if(N <= 0) {
+            printf("Error: Invalid number of data points %d\n", N);
+            ok = 0;
+        } else {
+            data->vals = (double*)malloc(N * sizeof(double));
+            if(!data->vals) {
+                printf("Error: Could not allocate data (%d doubles)\n", N);
+                ok = 0;
+            } else {
+                ok = (fread(data->vals, sizeof(double), N, fp) == N);
+            }
+        }
     }
-  }
-  fclose(fp);
-  if(!ok) {
-    printf("Error reading input data file '%s'\n", filename);
-    return 1;
-  }
-  
-  return 0;
+    
+    fclose(fp);
+    if(!ok) {
+        printf("Error reading input data file '%s'\n", filename);
+        return 1;
+    }
+    return 0;
 }
+
+/**
+ * Initializes data structure with given dimensions and value
+ * 
+ * @param data Data structure to initialize
+ * @param nx, ny Grid dimensions
+ * @param dx, dy Grid spacing
+ * @param val Initial value
+ * @return 0 on success, 1 on failure
+ */
+int init_data(data_t *data, int nx, int ny, double dx, double dy, double val) {
+    if (data == NULL) return 1;
+
+    data->nx = nx;
+    data->ny = ny;
+    data->dx = dx;
+    data->dy = dy;
+
+    data->vals = (double*)calloc(nx*ny, sizeof(double));
+    if (data->vals == NULL) return 1;
+
+    for (int i = 0; i < nx*ny; i++) {
+        data->vals[i] = val;
+    }
+
+    return 0;
+}
+
+/*===========================================================
+ * OUTPUT FUNCTIONS
+ ===========================================================*/
 
 /**
  * Writes data to binary file
@@ -169,33 +197,33 @@ int read_data(data_t *data, const char *filename)
  * @param step Time step number (-1 for single output)
  * @return 0 on success, 1 on failure
  */
-int write_data(const data_t *data, const char *filename, int step)
-{
-  char out[MAX_PATH_LENGTH];
-  if(step < 0)
-    sprintf(out, "output/%s.dat", filename);
-  else
-    sprintf(out, "output/%s_%d.dat", filename, step);
-  FILE *fp = fopen(out, "wb");
-  if(!fp) {
-    printf("Error: Could not open output data file '%s'\n", out);
-    return 1;
-  }
-  int ok = 1;
-  if(ok) ok = (fwrite(&data->nx, sizeof(int), 1, fp) == 1);
-  if(ok) ok = (fwrite(&data->ny, sizeof(int), 1, fp) == 1);
-  if(ok) ok = (fwrite(&data->dx, sizeof(double), 1, fp) == 1);
-  if(ok) ok = (fwrite(&data->dy, sizeof(double), 1, fp) == 1);
-  int N = data->nx * data->ny;
-  if(ok) ok = (fwrite(data->vals, sizeof(double), N, fp) == N);
-  fclose(fp);
-  if(!ok) {
-    printf("Error writing data file '%s'\n", out);
-    return 1;
-  }
-  return 0;
+int write_data(const data_t *data, const char *filename, int step) {
+    char out[MAX_PATH_LENGTH];
+    sprintf(out, "output/%s%s.dat", filename, (step < 0) ? "" : "_");
+    if(step >= 0) sprintf(out + strlen(out), "%d", step);
+    
+    FILE *fp = fopen(out, "wb");
+    if(!fp) {
+        printf("Error: Could not open output data file '%s'\n", out);
+        return 1;
+    }
+    
+    int ok = 1;
+    if(ok) ok = (fwrite(&data->nx, sizeof(int), 1, fp) == 1);
+    if(ok) ok = (fwrite(&data->ny, sizeof(int), 1, fp) == 1);
+    if(ok) ok = (fwrite(&data->dx, sizeof(double), 1, fp) == 1);
+    if(ok) ok = (fwrite(&data->dy, sizeof(double), 1, fp) == 1);
+    
+    int N = data->nx * data->ny;
+    if(ok) ok = (fwrite(data->vals, sizeof(double), N, fp) == N);
+    
+    fclose(fp);
+    if(!ok) {
+        printf("Error writing data file '%s'\n", out);
+        return 1;
+    }
+    return 0;
 }
-
 
 /**
  * Writes data to VTK image format
@@ -206,52 +234,50 @@ int write_data(const data_t *data, const char *filename, int step)
  * @param step Time step number (-1 for single output)
  * @return 0 on success, 1 on failure
  */
-int write_data_vtk(data_t **data, const char *name,
+int write_data_vtk(const data_t *data, const char *name,
                    const char *filename, int step) {
+    char out[MAX_PATH_LENGTH];
+    sprintf(out, "../../output/%s%s.vti", filename,
+            (step < 0) ? "" : "_");
+    if(step >= 0) sprintf(out + strlen(out), "%d", step);
 
-  char out[MAX_PATH_LENGTH];
- if(step < 0)
-    sprintf(out, "../../output/%s.vti", filename);
-  else
-    sprintf(out, "../../output/%s_%d.vti", filename, step);
+    FILE *fp = fopen(out, "wb");
+    if(!fp) {
+        printf("Error: Could not open output VTK file '%s'\n", out);
+        return 1;
+    }
 
-  FILE *fp = fopen(out, "wb");
-  if(!fp) {
-    printf("Error: Could not open output VTK file '%s'\n", out);
-    return 1;
-  }
+    uint64_t num_points = data->nx * data->ny;
+    uint64_t num_bytes = num_points * sizeof(double);
 
-  uint64_t num_points = (*data)->nx * (*data)->ny;
-  uint64_t num_bytes = num_points * sizeof(double);
+    // Write VTK XML header
+    fprintf(fp, "<?xml version=\"1.0\"?>\n");
+    fprintf(fp, "<VTKFile type=\"ImageData\" version=\"1.0\" "
+            "byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
+    fprintf(fp, "  <ImageData WholeExtent=\"0 %d 0 %d 0 0\" "
+            "Spacing=\"%lf %lf 0.0\">\n",
+            data->nx - 1, data->ny - 1, data->dx, data->dy);
+    fprintf(fp, "    <Piece Extent=\"0 %d 0 %d 0 0\">\n",
+            data->nx - 1, data->ny - 1);
+    fprintf(fp, "      <PointData Scalars=\"scalar_data\">\n");
+    fprintf(fp, "        <DataArray type=\"Float64\" Name=\"%s\" "
+            "format=\"appended\" offset=\"0\">\n", name);
+    fprintf(fp, "        </DataArray>\n");
+    fprintf(fp, "      </PointData>\n");
+    fprintf(fp, "    </Piece>\n");
+    fprintf(fp, "  </ImageData>\n");
+    fprintf(fp, "  <AppendedData encoding=\"raw\">\n_");
 
-  fprintf(fp, "<?xml version=\"1.0\"?>\n");
-  fprintf(fp, "<VTKFile type=\"ImageData\" version=\"1.0\" "
-          "byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
-  fprintf(fp, "  <ImageData WholeExtent=\"0 %d 0 %d 0 0\" "
-          "Spacing=\"%lf %lf 0.0\">\n",
-          (*data)->nx - 1, (*data)->ny - 1, (*data)->dx, (*data)->dy);
-  fprintf(fp, "    <Piece Extent=\"0 %d 0 %d 0 0\">\n",
-          (*data)->nx - 1, (*data)->ny - 1);
+    // Write binary data
+    fwrite(&num_bytes, sizeof(uint64_t), 1, fp);
+    fwrite(data->vals, sizeof(double), num_points, fp);
 
-  fprintf(fp, "      <PointData Scalars=\"scalar_data\">\n");
-  fprintf(fp, "        <DataArray type=\"Float64\" Name=\"%s\" "
-          "format=\"appended\" offset=\"0\">\n", name);
-  fprintf(fp, "        </DataArray>\n");
-  fprintf(fp, "      </PointData>\n");
+    // Write footer
+    fprintf(fp, "  </AppendedData>\n");
+    fprintf(fp, "</VTKFile>\n");
 
-  fprintf(fp, "    </Piece>\n");
-  fprintf(fp, "  </ImageData>\n");
-
-  fprintf(fp, "  <AppendedData encoding=\"raw\">\n_");
-
-  fwrite(&num_bytes, sizeof(uint64_t), 1, fp);
-  fwrite((*data)->vals, sizeof(double), num_points, fp);
-
-  fprintf(fp, "  </AppendedData>\n");
-  fprintf(fp, "</VTKFile>\n");
-
-  fclose(fp);
-  return 0;
+    fclose(fp);
+    return 0;
 }
 
 /**
@@ -264,97 +290,37 @@ int write_data_vtk(data_t **data, const char *name,
  * @return 0 on success, 1 on failure
  */
 int write_manifest_vtk(const char *filename, double dt, int nt,
-                       int sampling_rate)
-{
-  char out[MAX_PATH_LENGTH];
-  sprintf(out, "../../output/%s.pvd", filename);
+                       int sampling_rate) {
+    char out[MAX_PATH_LENGTH];
+    sprintf(out, "../../output/%s.pvd", filename);
 
-   FILE *fp = fopen(out, "wb");
-  if(!fp) {
-    printf("Error: Could not open output VTK manifest file '%s'\n", out);
-    return 1;
-  }
-
-  fprintf(fp, "<VTKFile type=\"Collection\" version=\"0.1\" "
-          "byte_order=\"LittleEndian\">\n");
-  fprintf(fp, "  <Collection>\n");
-  for(int n = 0; n < nt; n++) {
-    if(sampling_rate && !(n % sampling_rate)) {
-      double t = n * dt;
-      fprintf(fp, "    <DataSet timestep=\"%g\" file='%s_%d.vti'/>\n", t,
-              filename, n);
+    FILE *fp = fopen(out, "wb");
+    if(!fp) {
+        printf("Error: Could not open VTK manifest file '%s'\n", out);
+        return 1;
     }
-  }
-  fprintf(fp, "  </Collection>\n");
-  fprintf(fp, "</VTKFile>\n");
-  fclose(fp);
-  return 0;
-}
 
-
-/*===========================================================
- * INITIALIZATION AND MEMORY MANAGEMENT
- ===========================================================*/
-
-/**
- * Initializes data structure with given dimensions and value
- * 
- * @param data Data structure to initialize
- * @param nx, ny Grid dimensions
- * @param dx, dy Grid spacing
- * @param val Initial value
- * @param has_edges Whether to allocate edge arrays
- * @return 0 on success, 1 on failure
- */
-int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, int has_edges) {
+    fprintf(fp, "<VTKFile type=\"Collection\" version=\"0.1\" "
+            "byte_order=\"LittleEndian\">\n");
+    fprintf(fp, "  <Collection>\n");
     
-
-    if (data == NULL) return 1;
-
-    data->nx = nx;
-    data->ny = ny;
-    data->dx = dx;
-    data->dy = dy;
-
-    // Allouer le tableau principal
-    data->vals = calloc(nx * ny, sizeof(double));
-    if (data->vals == NULL) return 1;
-
-    // Initialiser avec la valeur donnée
-    for (int i = 0; i < nx * ny; i++) {
-        data->vals[i] = val;
-    }
-
-    // Allouer les bords si nécessaire
-    if (has_edges) {
-        data->edge_vals = calloc(NEIGHBOR_NUM, sizeof(double*));
-        if (data->edge_vals == NULL) {
-            free(data->vals);
-            return 1;
+    for(int n = 0; n < nt; n++) {
+        if(sampling_rate && !(n % sampling_rate)) {
+            double t = n * dt;
+            fprintf(fp, "    <DataSet timestep=\"%g\" file='%s_%d.vti'/>\n",
+                    t, filename, n);
         }
-
-        // Allouer chaque bord
-        data->edge_vals[LEFT] = calloc(ny, sizeof(double));
-        data->edge_vals[RIGHT] = calloc(ny, sizeof(double));
-        data->edge_vals[UP] = calloc(nx, sizeof(double));
-        data->edge_vals[DOWN] = calloc(nx, sizeof(double));
-
-        if (!data->edge_vals[LEFT] || !data->edge_vals[RIGHT] ||
-            !data->edge_vals[UP] || !data->edge_vals[DOWN]) {
-            // Nettoyer en cas d'échec
-            for (int i = 0; i < NEIGHBOR_NUM; i++) {
-                if (data->edge_vals[i]) free(data->edge_vals[i]);
-            }
-            free(data->edge_vals);
-            free(data->vals);
-            return 1;
-        }
-    } else {
-        data->edge_vals = NULL;
     }
-
+    
+    fprintf(fp, "  </Collection>\n");
+    fprintf(fp, "</VTKFile>\n");
+    fclose(fp);
     return 0;
 }
+
+/*===========================================================
+ * INITIALIZATION AND CLEANUP
+ ===========================================================*/
 
 /**
  * Initializes all simulation data structures
@@ -364,14 +330,13 @@ int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, in
  * @return Initialized all_data_t structure or NULL on failure
  */
 all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
-  
     all_data_t* all_data = malloc(sizeof(all_data_t));
     if (all_data == NULL) {
         fprintf(stderr, "Error: Failed to allocate all_data\n");
         return NULL;
     }
 
-    // Initialize all pointers to NULL
+    // Initialize to NULL for safe cleanup
     all_data->u = NULL;
     all_data->v = NULL;
     all_data->eta = NULL;
@@ -392,27 +357,26 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
         return NULL;
     }
 
-    // Calculate global domain dimensions
+    // Calculate global and local dimensions
     double hx = all_data->h->nx * all_data->h->dx;
     double hy = all_data->h->ny * all_data->h->dy;
     int nx_glob = floor(hx / param->dx);
     int ny_glob = floor(hy / param->dy);
 
-    // Calculate local dimensions
     int local_nx = nx_glob / topo->dims[0];
     int local_ny = ny_glob / topo->dims[1];
 
-    // Adjust for remainder
+    // Adjust for non-uniform distribution
     if (topo->coords[0] < (nx_glob % topo->dims[0])) local_nx++;
     if (topo->coords[1] < (ny_glob % topo->dims[1])) local_ny++;
 
-    if (topo->rank ==0){
-      printf("Rank %d: Global dimensions: %dx%d, Local dimensions: %dx%d\n",
-            topo->cart_rank, nx_glob, ny_glob, local_nx, local_ny);
-      fflush(stdout);
+    if (topo->rank == 0) {
+        printf("Rank %d: Global dimensions: %dx%d, Local dimensions: %dx%d\n",
+               topo->cart_rank, nx_glob, ny_glob, local_nx, local_ny);
+        fflush(stdout);
     }
 
-    // Allocate other fields with correct dimensions
+    // Allocate all field structures
     all_data->eta = malloc(sizeof(data_t));
     all_data->u = malloc(sizeof(data_t));
     all_data->v = malloc(sizeof(data_t));
@@ -424,68 +388,17 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
         return NULL;
     }
 
-    // Initialize local fields with correct dimensions
-    // eta field
-    if (init_data(all_data->eta, local_nx, local_ny, 
-                  param->dx, param->dy, 0.0, 1)) {
-        fprintf(stderr, "Error: Failed to initialize eta\n");
-        free_all_data(all_data);
-        return NULL;
-    }
-
-    // u field (one more point in x direction)
-    if (init_data(all_data->u, local_nx + 1, local_ny, 
-                  param->dx, param->dy, 0.0, 1)) {
-        fprintf(stderr, "Error: Failed to initialize u\n");
-        free_all_data(all_data);
-        return NULL;
-    }
-
-    // v field (one more point in y direction)
-    if (init_data(all_data->v, local_nx, local_ny + 1, 
-                  param->dx, param->dy, 0.0, 1)) {
-        fprintf(stderr, "Error: Failed to initialize v\n");
-        free_all_data(all_data);
-        return NULL;
-    }
-
-    // h_interp field
-    if (init_data(all_data->h_interp, local_nx, local_ny, 
-                  param->dx, param->dy, 0.0, 0)) {
-        fprintf(stderr, "Error: Failed to initialize h_interp\n");
+    // Initialize each field with appropriate dimensions
+    if (init_data(all_data->eta, local_nx, local_ny, param->dx, param->dy, 0.0) ||
+        init_data(all_data->u, local_nx + 1, local_ny, param->dx, param->dy, 0.0) ||
+        init_data(all_data->v, local_nx, local_ny + 1, param->dx, param->dy, 0.0) ||
+        init_data(all_data->h_interp, local_nx, local_ny, param->dx, param->dy, 0.0)) {
+        fprintf(stderr, "Error: Failed to initialize fields\n");
         free_all_data(all_data);
         return NULL;
     }
 
     return all_data;
-}
-
-/**
- * Releases memory for single data structure
- * 
- * @param data Data structure to free
- * @param has_edges Whether structure has edge arrays
- */
-void free_data(data_t *data, int has_edges) {
-    if (data == NULL) return;
-
-    if (data->vals != NULL) {
-        free(data->vals);
-        data->vals = NULL;
-    }
-
-    if (has_edges && data->edge_vals != NULL) {
-        for (int i = 0; i < NEIGHBOR_NUM; i++) {
-            if (data->edge_vals[i] != NULL) {
-                free(data->edge_vals[i]);
-                data->edge_vals[i] = NULL;
-            }
-        }
-        free(data->edge_vals);
-        data->edge_vals = NULL;
-    }
-
-    free(data);
 }
 
 /**
@@ -496,32 +409,44 @@ void free_data(data_t *data, int has_edges) {
 void free_all_data(all_data_t *all_data) {
     if (all_data == NULL) return;
 
-    if (all_data->u != NULL) {
-        free_data(all_data->u, 1);
+    if (all_data->u) {
+        free_data(all_data->u);
         all_data->u = NULL;
     }
-    
-    if (all_data->v != NULL) {
-        free_data(all_data->v, 1);
+    if (all_data->v) {
+        free_data(all_data->v);
         all_data->v = NULL;
     }
-    
-    if (all_data->eta != NULL) {
-        free_data(all_data->eta, 1);
+    if (all_data->eta) {
+        free_data(all_data->eta);
         all_data->eta = NULL;
     }
-    
-    if (all_data->h != NULL) {
-        free_data(all_data->h, 0);
+    if (all_data->h) {
+        free_data(all_data->h);
         all_data->h = NULL;
     }
-    
-    if (all_data->h_interp != NULL) {
-        free_data(all_data->h_interp, 0);
+    if (all_data->h_interp) {
+        free_data(all_data->h_interp);
         all_data->h_interp = NULL;
     }
 
     free(all_data);
+}
+
+/**
+ * Releases memory for single data structure
+ * 
+ * @param data Data structure to free
+ */
+void free_data(data_t *data) {
+    if (data == NULL) return;
+    
+    if (data->vals) {
+        free(data->vals);
+        data->vals = NULL;
+    }
+    
+    free(data);
 }
 
 /**
@@ -536,32 +461,26 @@ void cleanup(parameters_t *param, MPITopology *topo, gather_data_t *gdata) {
 
     MPI_Barrier(topo->cart_comm);
 
-    if (gdata->recv_size_eta) { free(gdata->recv_size_eta); gdata->recv_size_eta = NULL; }
-    if (gdata->recv_size_u) { free(gdata->recv_size_u); gdata->recv_size_u = NULL; }
-    if (gdata->recv_size_v) { free(gdata->recv_size_v); gdata->recv_size_v = NULL; }
-    if (gdata->displacements_eta) { free(gdata->displacements_eta); gdata->displacements_eta = NULL; }
-    if (gdata->displacements_u) { free(gdata->displacements_u); gdata->displacements_u = NULL; }
-    if (gdata->displacements_v) { free(gdata->displacements_v); gdata->displacements_v = NULL; }
+    // Free common arrays
+    if (gdata->recv_size_eta) free(gdata->recv_size_eta);
+    if (gdata->recv_size_u) free(gdata->recv_size_u);
+    if (gdata->recv_size_v) free(gdata->recv_size_v);
+    if (gdata->displacements_eta) free(gdata->displacements_eta);
+    if (gdata->displacements_u) free(gdata->displacements_u);
+    if (gdata->displacements_v) free(gdata->displacements_v);
 
+    // Free rank 0 specific data
     if (topo->cart_rank == 0) {
-        if (gdata->gathered_output) {
-            free(gdata->gathered_output);
-            gdata->gathered_output = NULL;
-        }
-        
-        if (gdata->receive_data_eta) { free(gdata->receive_data_eta); gdata->receive_data_eta = NULL; }
-        if (gdata->receive_data_u) { free(gdata->receive_data_u); gdata->receive_data_u = NULL; }
-        if (gdata->receive_data_v) { free(gdata->receive_data_v); gdata->receive_data_v = NULL; }
+        if (gdata->gathered_output) free(gdata->gathered_output);
+        if (gdata->receive_data_eta) free(gdata->receive_data_eta);
+        if (gdata->receive_data_u) free(gdata->receive_data_u);
+        if (gdata->receive_data_v) free(gdata->receive_data_v);
 
         if (gdata->rank_glob) {
             for (int r = 0; r < topo->nb_process; r++) {
-                if (gdata->rank_glob[r]) {
-                    free(gdata->rank_glob[r]);
-                    gdata->rank_glob[r] = NULL;
-                }
+                if (gdata->rank_glob[r]) free(gdata->rank_glob[r]);
             }
             free(gdata->rank_glob);
-            gdata->rank_glob = NULL;
         }
     }
 
@@ -574,11 +493,11 @@ void cleanup(parameters_t *param, MPITopology *topo, gather_data_t *gdata) {
  * @param topo MPI topology structure to cleanup
  */
 void cleanup_mpi_topology(MPITopology *topo) {
-    if (topo->cart_comm != MPI_COMM_NULL && topo->cart_comm != MPI_COMM_WORLD) {
+    if (topo->cart_comm != MPI_COMM_NULL && 
+        topo->cart_comm != MPI_COMM_WORLD) {
         MPI_Comm_free(&topo->cart_comm);
     }
 }
-
 
 /*===========================================================
  * UTILITY FUNCTIONS
@@ -592,14 +511,15 @@ void cleanup_mpi_topology(MPITopology *topo) {
  * @param start_time Simulation start time
  * @param topo MPI topology information
  */
-void print_progress(int current_step, int total_steps, double start_time, MPITopology *topo) {
-
+void print_progress(int current_step, int total_steps, 
+                   double start_time, MPITopology *topo) {
     if (current_step > 0 && 
         (current_step % (total_steps / 10)) == 0 && 
         topo->cart_rank == 0) {
             
         double time_elapsed = GET_TIME() - start_time;
-        double estimated_remaining = (total_steps - current_step) * time_elapsed / current_step;
+        double estimated_remaining = (total_steps - current_step) * 
+                                   time_elapsed / current_step;
         
         printf("Computing step %d/%d (ETA: %.2f seconds)     \r", 
                current_step, total_steps, estimated_remaining);

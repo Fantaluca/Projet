@@ -1,5 +1,5 @@
 /*===========================================================
- * SHALLOW WATER EQUATIONS SOLVER - SERIAL VERSION
+ * SHALLOW WATER EQUATIONS SOLVER - PARALLEL OMP
  * Header File
  * Contains type definitions, macros, and function prototypes
  ===========================================================*/
