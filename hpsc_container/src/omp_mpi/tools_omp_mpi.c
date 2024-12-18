@@ -1,4 +1,4 @@
-#include "shallow_mpi.h"
+#include "shallow_omp_mpi.h"
 
 
 int read_parameters(parameters_t *param, const char *filename) {
@@ -207,8 +207,10 @@ int write_data(const data_t *data, const char *filename, int step)
 
 
 
-int write_data_vtk(data_t **data, const char *name,
-                   const char *filename, int step) {
+int write_data_vtk(const data_t *data,
+                   const char *name,
+                   const char *filename,
+                   int step) {
 
   char out[MAX_PATH_LENGTH];
  if(step < 0)
@@ -222,7 +224,7 @@ int write_data_vtk(data_t **data, const char *name,
     return 1;
   }
 
-  uint64_t num_points = (*data)->nx * (*data)->ny;
+  uint64_t num_points = (data)->nx * (data)->ny;
   uint64_t num_bytes = num_points * sizeof(double);
 
   fprintf(fp, "<?xml version=\"1.0\"?>\n");
@@ -230,9 +232,9 @@ int write_data_vtk(data_t **data, const char *name,
           "byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
   fprintf(fp, "  <ImageData WholeExtent=\"0 %d 0 %d 0 0\" "
           "Spacing=\"%lf %lf 0.0\">\n",
-          (*data)->nx - 1, (*data)->ny - 1, (*data)->dx, (*data)->dy);
+          (data)->nx - 1, (data)->ny - 1, (data)->dx, (data)->dy);
   fprintf(fp, "    <Piece Extent=\"0 %d 0 %d 0 0\">\n",
-          (*data)->nx - 1, (*data)->ny - 1);
+          (data)->nx - 1, (data)->ny - 1);
 
   fprintf(fp, "      <PointData Scalars=\"scalar_data\">\n");
   fprintf(fp, "        <DataArray type=\"Float64\" Name=\"%s\" "
@@ -246,7 +248,7 @@ int write_data_vtk(data_t **data, const char *name,
   fprintf(fp, "  <AppendedData encoding=\"raw\">\n_");
 
   fwrite(&num_bytes, sizeof(uint64_t), 1, fp);
-  fwrite((*data)->vals, sizeof(double), num_points, fp);
+  fwrite((data)->vals, sizeof(double), num_points, fp);
 
   fprintf(fp, "  </AppendedData>\n");
   fprintf(fp, "</VTKFile>\n");
@@ -283,7 +285,7 @@ int write_manifest_vtk(const char *filename, double dt, int nt,
   return 0;
 }
 
-int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, int has_edges) {
+int init_data(data_t *data, int nx, int ny, double dx, double dy, double val) {
     
 
     if (data == NULL) return 1;
@@ -293,41 +295,11 @@ int init_data(data_t *data, int nx, int ny, double dx, double dy, double val, in
     data->dx = dx;
     data->dy = dy;
 
-    // Allouer le tableau principal
-    data->vals = calloc(nx * ny, sizeof(double));
+    data->vals = (double*)calloc(nx*ny, sizeof(double));
     if (data->vals == NULL) return 1;
 
-    // Initialiser avec la valeur donnée
-    for (int i = 0; i < nx * ny; i++) {
+    for (int i = 0; i < nx*ny; i++) {
         data->vals[i] = val;
-    }
-
-    // Allouer les bords si nécessaire
-    if (has_edges) {
-        data->edge_vals = calloc(NEIGHBOR_NUM, sizeof(double*));
-        if (data->edge_vals == NULL) {
-            free(data->vals);
-            return 1;
-        }
-
-        // Allouer chaque bord
-        data->edge_vals[LEFT] = calloc(ny, sizeof(double));
-        data->edge_vals[RIGHT] = calloc(ny, sizeof(double));
-        data->edge_vals[UP] = calloc(nx, sizeof(double));
-        data->edge_vals[DOWN] = calloc(nx, sizeof(double));
-
-        if (!data->edge_vals[LEFT] || !data->edge_vals[RIGHT] ||
-            !data->edge_vals[UP] || !data->edge_vals[DOWN]) {
-            // Nettoyer en cas d'échec
-            for (int i = 0; i < NEIGHBOR_NUM; i++) {
-                if (data->edge_vals[i]) free(data->edge_vals[i]);
-            }
-            free(data->edge_vals);
-            free(data->vals);
-            return 1;
-        }
-    } else {
-        data->edge_vals = NULL;
     }
 
     return 0;
@@ -337,34 +309,34 @@ void free_all_data(all_data_t *all_data) {
     if (all_data == NULL) return;
 
     if (all_data->u != NULL) {
-        free_data(all_data->u, 1);
+        free_data(all_data->u);
         all_data->u = NULL;
     }
     
     if (all_data->v != NULL) {
-        free_data(all_data->v, 1);
+        free_data(all_data->v);
         all_data->v = NULL;
     }
     
     if (all_data->eta != NULL) {
-        free_data(all_data->eta, 1);
+        free_data(all_data->eta);
         all_data->eta = NULL;
     }
     
     if (all_data->h != NULL) {
-        free_data(all_data->h, 0);
+        free_data(all_data->h);
         all_data->h = NULL;
     }
     
     if (all_data->h_interp != NULL) {
-        free_data(all_data->h_interp, 0);
+        free_data(all_data->h_interp);
         all_data->h_interp = NULL;
     }
 
     free(all_data);
 }
 
-void free_data(data_t *data, int has_edges) {
+void free_data(data_t *data) {
     if (data == NULL) return;
 
     if (data->vals != NULL) {
@@ -372,16 +344,6 @@ void free_data(data_t *data, int has_edges) {
         data->vals = NULL;
     }
 
-    if (has_edges && data->edge_vals != NULL) {
-        for (int i = 0; i < NEIGHBOR_NUM; i++) {
-            if (data->edge_vals[i] != NULL) {
-                free(data->edge_vals[i]);
-                data->edge_vals[i] = NULL;
-            }
-        }
-        free(data->edge_vals);
-        data->edge_vals = NULL;
-    }
 
     free(data);
 }
@@ -446,6 +408,8 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
 
     // Allocate and read bathymetry data
     all_data->h = malloc(sizeof(data_t));
+
+   
     if (all_data->h == NULL) {
         fprintf(stderr, "Error: Failed to allocate h structure\n");
         free_all_data(all_data);
@@ -472,7 +436,7 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
     if (topo->coords[0] < (nx_glob % topo->dims[0])) local_nx++;
     if (topo->coords[1] < (ny_glob % topo->dims[1])) local_ny++;
 
-    if (topo->rank ==0){
+    if (topo->rank == 0){
       printf("Rank %d: Global dimensions: %dx%d, Local dimensions: %dx%d\n",
             topo->cart_rank, nx_glob, ny_glob, local_nx, local_ny);
       fflush(stdout);
@@ -493,7 +457,7 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
     // Initialize local fields with correct dimensions
     // eta field
     if (init_data(all_data->eta, local_nx, local_ny, 
-                  param->dx, param->dy, 0.0, 1)) {
+                  param->dx, param->dy, 0.0)) {
         fprintf(stderr, "Error: Failed to initialize eta\n");
         free_all_data(all_data);
         return NULL;
@@ -501,7 +465,7 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
 
     // u field (one more point in x direction)
     if (init_data(all_data->u, local_nx + 1, local_ny, 
-                  param->dx, param->dy, 0.0, 1)) {
+                  param->dx, param->dy, 0.0)) {
         fprintf(stderr, "Error: Failed to initialize u\n");
         free_all_data(all_data);
         return NULL;
@@ -509,7 +473,7 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
 
     // v field (one more point in y direction)
     if (init_data(all_data->v, local_nx, local_ny + 1, 
-                  param->dx, param->dy, 0.0, 1)) {
+                  param->dx, param->dy, 0.0)) {
         fprintf(stderr, "Error: Failed to initialize v\n");
         free_all_data(all_data);
         return NULL;
@@ -517,7 +481,7 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
 
     // h_interp field
     if (init_data(all_data->h_interp, local_nx, local_ny, 
-                  param->dx, param->dy, 0.0, 0)) {
+                  param->dx, param->dy, 0.0)) {
         fprintf(stderr, "Error: Failed to initialize h_interp\n");
         free_all_data(all_data);
         return NULL;

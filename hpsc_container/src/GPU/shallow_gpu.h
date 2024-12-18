@@ -88,7 +88,7 @@ void interp_bathy(int nx,
                   all_data_t *all_data);
 
 void apply_source(int n, int nx, int ny, const parameters_t param, all_data_t *all_data);
-void boundary_condition(int nx, int ny, const parameters_t param, all_data_t *all_data);
+void boundary_conditions(int nx, int ny, const parameters_t param, all_data_t *all_data);
 
 /*------ From "tools.c" ------*/
 int read_parameters(parameters_t *param,

@@ -1,4 +1,4 @@
-#include "shallow_mpi.h"
+#include "shallow_pml.h"
 
 #undef MPI_STATUSES_IGNORE
 #define MPI_STATUSES_IGNORE (MPI_Status *)0 // temporary to get rid of "warning: 'MPI_Waitall' accessing 20 bytes in a region of size 0 [-Wstringop-overflow=]"
@@ -30,7 +30,7 @@
 
 
 void update_eta(const parameters_t param, 
-                all_data_t **all_data,
+                all_data_t *all_data,
                 gather_data_t *gdata,
                 MPITopology *topo) {
 
@@ -41,8 +41,8 @@ void update_eta(const parameters_t param,
                                   MPI_REQUEST_NULL, MPI_REQUEST_NULL};
     MPI_Status status[4];
 
-    int nx = (*all_data)->eta->nx;
-    int ny = (*all_data)->eta->ny;
+    int nx = all_data->eta->nx;
+    int ny = all_data->eta->ny;
 
     // Allocate all buffers
     double *send_left = calloc(ny, sizeof(double));
@@ -62,12 +62,12 @@ void update_eta(const parameters_t param,
 
     // Prepare send buffers
     for (int j = 0; j < ny; j++) {
-        send_left[j] = GET((*all_data)->u, 0, j);
-        send_right[j] = GET((*all_data)->u, nx, j);  // Note: u has nx+1 points
+        send_left[j] = GET(all_data->u, 0, j);
+        send_right[j] = GET(all_data->u, nx+1, j);  // Note: u has nx+1 points
     }
     for (int i = 0; i < nx; i++) {
-        send_down[i] = GET((*all_data)->v, i, 0);
-        send_up[i] = GET((*all_data)->v, i, ny);  // Note: v has ny+1 points
+        send_down[i] = GET(all_data->v, i, 0);
+        send_up[i] = GET(all_data->v, i, ny);  // Note: v has ny+1 points
     }
 
     // Post all receives first
@@ -110,28 +110,28 @@ void update_eta(const parameters_t param,
     for (int j = 0; j < ny; j++) {
         for (int i = 0; i < nx; i++) {
             // Get h values at the required positions
-            double h_ui_ip1_j = GET((*all_data)->h_interp, i + 1, j);    // h at (i+1, j) for u
-            double h_ui_j = GET((*all_data)->h_interp, i, j);            // h at (i, j) for u
-            double h_vi_jp1 = GET((*all_data)->h_interp, i, j + 1);      // h at (i, j+1) for v
-            double h_vi_j = GET((*all_data)->h_interp, i, j);            // h at (i, j) for v
+            double h_ui_ip1_j = GET(all_data->h_interp, i + 1, j);    // h at (i+1, j) for u
+            double h_ui_j = GET(all_data->h_interp, i, j);            // h at (i, j) for u
+            double h_vi_jp1 = GET(all_data->h_interp, i, j + 1);      // h at (i, j+1) for v
+            double h_vi_j = GET(all_data->h_interp, i, j);            // h at (i, j) for v
 
             // Get u values with boundary handling
-            double u_i = GET((*all_data)->u, i, j);
-            double u_ip1 = (i < nx - 1) ? GET((*all_data)->u, i + 1, j)
+            double u_i = GET(all_data->u, i, j);
+            double u_ip1 = (i < nx - 1) ? GET(all_data->u, i + 1, j)
                                         : (topo->neighbors[RIGHT] != MPI_PROC_NULL) ? recv_right[j] : u_i;
 
             // Get v values with boundary handling
-            double v_j = GET((*all_data)->v, i, j);
-            double v_jp1 = (j < ny - 1) ? GET((*all_data)->v, i, j + 1)
+            double v_j = GET(all_data->v, i, j);
+            double v_jp1 = (j < ny - 1) ? GET(all_data->v, i, j + 1)
                                         : (topo->neighbors[UP] != MPI_PROC_NULL) ? recv_up[i] : v_j;
 
             // Calculate spatial derivatives with the correct h values
             double du_dx = (h_ui_ip1_j * u_ip1 - h_ui_j * u_i) / param.dx;
             double dv_dy = (h_vi_jp1 * v_jp1 - h_vi_j * v_j) / param.dy;
 
-            double eta_old = GET((*all_data)->eta, i, j);
+            double eta_old = GET(all_data->eta, i, j);
             double eta_new = eta_old - param.dt * (du_dx + dv_dy);
-            SET((*all_data)->eta, i, j, eta_new);
+            SET(all_data->eta, i, j, eta_new);
         }
     }
 
@@ -152,7 +152,7 @@ void update_eta(const parameters_t param,
 }
 
 void update_velocities(const parameters_t param,
-                      all_data_t **all_data,
+                      all_data_t *all_data,
                       gather_data_t *gdata,
                       MPITopology *topo) {
 
@@ -162,8 +162,8 @@ void update_velocities(const parameters_t param,
                                   MPI_REQUEST_NULL, MPI_REQUEST_NULL};
     MPI_Status status[4];
 
-    int nx = (*all_data)->eta->nx;
-    int ny = (*all_data)->eta->ny;
+    int nx = all_data->eta->nx;
+    int ny = all_data->eta->ny;
     
     // Allocate all buffers
     double *send_left = calloc(ny, sizeof(double));
@@ -183,12 +183,12 @@ void update_velocities(const parameters_t param,
 
     // Prepare send buffers with eta values
     for (int j = 0; j < ny; j++) {
-        send_left[j] = GET((*all_data)->eta, 0, j);
-        send_right[j] = GET((*all_data)->eta, nx-1, j);
+        send_left[j] = GET(all_data->eta, 0, j);
+        send_right[j] = GET(all_data->eta, nx-1, j);
     }
     for (int i = 0; i < nx; i++) {
-        send_down[i] = GET((*all_data)->eta, i, 0);
-        send_up[i] = GET((*all_data)->eta, i, ny-1);
+        send_down[i] = GET(all_data->eta, i, 0);
+        send_up[i] = GET(all_data->eta, i, ny-1);
     }
 
     // Post all receives first
@@ -240,24 +240,24 @@ void update_velocities(const parameters_t param,
             double eta_im1j;
 
             if (i < nx) {
-                eta_ij = GET((*all_data)->eta, i, j);
+                eta_ij = GET(all_data->eta, i, j);
             } else if (topo->neighbors[RIGHT] != MPI_PROC_NULL) {
                 eta_ij = recv_right[j];
             } else {
-                eta_ij = GET((*all_data)->eta, nx-1, j);  // Extrapolate at boundary
+                eta_ij = GET(all_data->eta, nx-1, j);  
             }
 
             if (i > 0) {
-                eta_im1j = GET((*all_data)->eta, i-1, j);
+                eta_im1j = GET(all_data->eta, i-1, j);
             } else if (topo->neighbors[LEFT] != MPI_PROC_NULL) {
                 eta_im1j = recv_left[j];
             } else {
-                eta_im1j = eta_ij;  // Extrapolate at boundary
+                eta_im1j = eta_ij;  
             }
 
-            double u_ij = GET((*all_data)->u, i, j);
+            double u_ij = GET(all_data->u, i, j);
             double new_u = (1.0 - c2) * u_ij - c1 / dx * (eta_ij - eta_im1j);
-            SET((*all_data)->u, i, j, new_u);
+            SET(all_data->u, i, j, new_u);
         }
     }
 
@@ -269,24 +269,24 @@ void update_velocities(const parameters_t param,
             double eta_ijm1;
 
             if (j < ny) {
-                eta_ij = GET((*all_data)->eta, i, j);
+                eta_ij = GET(all_data->eta, i, j);
             } else if (topo->neighbors[UP] != MPI_PROC_NULL) {
                 eta_ij = recv_up[i];
             } else {
-                eta_ij = GET((*all_data)->eta, i, ny-1);  // Extrapolate at boundary
+                eta_ij = GET(all_data->eta, i, ny-1); 
             }
 
             if (j > 0) {
-                eta_ijm1 = GET((*all_data)->eta, i, j-1);
+                eta_ijm1 = GET(all_data->eta, i, j-1);
             } else if (topo->neighbors[DOWN] != MPI_PROC_NULL) {
                 eta_ijm1 = recv_down[i];
             } else {
-                eta_ijm1 = eta_ij;  // Extrapolate at boundary
+                eta_ijm1 = eta_ij;  
             }
 
-            double v_ij = GET((*all_data)->v, i, j);
+            double v_ij = GET(all_data->v, i, j);
             double new_v = (1.0 - c2) * v_ij - c1 / dy * (eta_ij - eta_ijm1);
-            SET((*all_data)->v, i, j, new_v);
+            SET(all_data->v, i, j, new_v);
         }
     }
 
@@ -348,15 +348,15 @@ double interpolate_data(const data_t *data,
 
 void interp_bathy(const parameters_t param,
                   int nx_glob, int ny_glob,
-                  all_data_t **all_data,
+                  all_data_t *all_data,
                   gather_data_t *gdata, 
                   MPITopology *topo) {
     
 
     int start_i = START_I(gdata, topo->cart_rank);
     int start_j = START_J(gdata, topo->cart_rank);
-    int local_nx = (*all_data)->h_interp->nx;
-    int local_ny = (*all_data)->h_interp->ny;
+    int local_nx = all_data->h_interp->nx;
+    int local_ny = all_data->h_interp->ny;
 
 
     #pragma omp parallel for
@@ -365,150 +365,55 @@ void interp_bathy(const parameters_t param,
 
             double x = (i + start_i) * param.dx;
             double y = (j + start_j) * param.dy;
-            double val = interpolate_data((*all_data)->h, nx_glob, ny_glob, x, y);
-            SET((*all_data)->h_interp, i, j, val);
+            double val = interpolate_data(all_data->h, nx_glob, ny_glob, x, y);
+            SET(all_data->h_interp, i, j, val);
         }
     }
 }
 
-void boundary_conditions(const parameters_t param, all_data_t **all_data, MPITopology *topo) {
-    switch(param.boundary_type) {
-        case 1: {  // Reflective boundary conditions (original)
+void boundary_conditions(const parameters_t param, all_data_t *all_data, MPITopology *topo) {
+
             #pragma omp parallel sections
             {
                 #pragma omp section
                 if (topo->neighbors[LEFT] == MPI_PROC_NULL) {
-                    for (int j = 0; j < (*all_data)->u->ny; j++) {
-                        SET((*all_data)->u, 0, j, 0.0);
+                    for (int j = 0; j < all_data->u->ny; j++) {
+                        SET(all_data->u, 0, j, 0.0);
                     }
                 }
                 
                 #pragma omp section
                 if (topo->neighbors[RIGHT] == MPI_PROC_NULL) {
-                    for (int j = 0; j < (*all_data)->u->ny; j++) {
-                        SET((*all_data)->u, (*all_data)->u->nx - 1, j, 0.0);
+                    for (int j = 0; j < all_data->u->ny; j++) {
+                        SET(all_data->u, all_data->u->nx - 1, j, 0.0);
                     }
                 }
 
                 #pragma omp section
                 if (topo->neighbors[DOWN] == MPI_PROC_NULL) {
-                    for (int i = 0; i < (*all_data)->v->nx; i++) {
-                        SET((*all_data)->v, i, 0, 0.0);
+                    for (int i = 0; i < all_data->v->nx; i++) {
+                        SET(all_data->v, i, 0, 0.0);
                     }
                 }
                 
                 #pragma omp section
                 if (topo->neighbors[UP] == MPI_PROC_NULL) {
-                    for (int i = 0; i < (*all_data)->v->nx; i++) {
-                        SET((*all_data)->v, i, (*all_data)->v->ny - 1, 0.0);
+                    for (int i = 0; i < all_data->v->nx; i++) {
+                        SET(all_data->v, i, all_data->v->ny - 1, 0.0);
                     }
                 }
             }
-            break;
-        }
         
-        case 2: {  // Optimized Sommerfeld with absorption control
-            const double dt = param.dt;
-            const double dx = param.dx;
-            const double dy = param.dy;
-            const double g = 9.81;
-            
-            // Coefficient d'absorption: 
-            // - Augmenter pour plus d'absorption (ex: 1.5)
-            // - Diminuer pour moins d'absorption (ex: 0.5)
-            const double absorption_strength = 1.0;
-            
-            // Fonction inline pour calculer le coefficient de damping
-            #define CALC_DAMPING(depth, delta) \
-                fmax(0.0, fmin(1.0, 1.0 - absorption_strength * sqrt(g * fmax(0.01, depth)) * dt / delta))
-            
-            // Les variables nx et ny sont utilisées plusieurs fois
-            const int u_nx = (*all_data)->u->nx;
-            const int u_ny = (*all_data)->u->ny;
-            const int v_nx = (*all_data)->v->nx;
-            const int v_ny = (*all_data)->v->ny;
-            
-            // Left boundary - combine u and eta processing
-            if (topo->neighbors[LEFT] == MPI_PROC_NULL) {
-                for (int j = 0; j < u_ny; j++) {
-                    double local_depth = GET((*all_data)->h_interp, 1, j);
-                    double damping = CALC_DAMPING(local_depth, dx);
-                    
-                    // Process u
-                    SET((*all_data)->u, 0, j, GET((*all_data)->u, 1, j) * damping);
-                    
-                    // Process eta if within bounds
-                    if ((*all_data)->eta != NULL && j > 0 && j < (*all_data)->eta->ny - 1) {
-                        SET((*all_data)->eta, 0, j, GET((*all_data)->eta, 1, j) * damping);
-                    }
-                }
-            }
-            
-            // Right boundary - combine u and eta processing
-            if (topo->neighbors[RIGHT] == MPI_PROC_NULL) {
-                for (int j = 0; j < u_ny; j++) {
-                    double local_depth = GET((*all_data)->h_interp, u_nx-2, j);
-                    double damping = CALC_DAMPING(local_depth, dx);
-                    
-                    // Process u
-                    SET((*all_data)->u, u_nx-1, j, GET((*all_data)->u, u_nx-2, j) * damping);
-                    
-                    // Process eta if within bounds
-                    if ((*all_data)->eta != NULL && j > 0 && j < (*all_data)->eta->ny - 1) {
-                        SET((*all_data)->eta, (*all_data)->eta->nx-1, j, 
-                            GET((*all_data)->eta, (*all_data)->eta->nx-2, j) * damping);
-                    }
-                }
-            }
-            
-            // Bottom boundary - combine v and eta processing
-            if (topo->neighbors[DOWN] == MPI_PROC_NULL) {
-                for (int i = 0; i < v_nx; i++) {
-                    double local_depth = GET((*all_data)->h_interp, i, 1);
-                    double damping = CALC_DAMPING(local_depth, dy);
-                    
-                    // Process v
-                    SET((*all_data)->v, i, 0, GET((*all_data)->v, i, 1) * damping);
-                    
-                    // Process eta if within bounds
-                    if ((*all_data)->eta != NULL && i > 0 && i < (*all_data)->eta->nx - 1) {
-                        SET((*all_data)->eta, i, 0, GET((*all_data)->eta, i, 1) * damping);
-                    }
-                }
-            }
-            
-            // Top boundary - combine v and eta processing
-            if (topo->neighbors[UP] == MPI_PROC_NULL) {
-                for (int i = 0; i < v_nx; i++) {
-                    double local_depth = GET((*all_data)->h_interp, i, v_ny-2);
-                    double damping = CALC_DAMPING(local_depth, dy);
-                    
-                    // Process v
-                    SET((*all_data)->v, i, v_ny-1, GET((*all_data)->v, i, v_ny-2) * damping);
-                    
-                    // Process eta if within bounds
-                    if ((*all_data)->eta != NULL && i > 0 && i < (*all_data)->eta->nx - 1) {
-                        SET((*all_data)->eta, i, (*all_data)->eta->ny-1, 
-                            GET((*all_data)->eta, i, (*all_data)->eta->ny-2) * damping);
-                    }
-                }
-            }
-            
-            #undef CALC_DAMPING
-            break;
-        }
         
-        default:
-            if (topo->cart_rank == 0) {
-                printf("Warning: Unknown boundary type %d\n", param.boundary_type);
-            }
-            break;
-    }
+        
+        
+    
+    
 }
 
 void apply_source(int timestep, int nx_glob, int ny_glob,
                   const parameters_t param,
-                  all_data_t **all_data,
+                  all_data_t *all_data,
                   gather_data_t *gdata,
                   MPITopology *topo) {
     
@@ -528,11 +433,11 @@ void apply_source(int timestep, int nx_glob, int ny_glob,
         case 1: {  // Top boundary wave maker
             if (topo->neighbors[UP] == MPI_PROC_NULL) {
                 #pragma omp parallel for
-                for (int i = 0; i < (*all_data)->v->nx; i++) {
+                for (int i = 0; i < all_data->v->nx; i++) {
 
                     double x_pos = (START_I(gdata, topo->cart_rank) + i) * param.dx;
                     double spatial_mod = sin(2.0 * M_PI * x_pos / (nx_glob * param.dx) * 2);
-                    SET((*all_data)->v, i, (*all_data)->v->ny-1, source * (1.0 + 0.3 * spatial_mod));
+                    SET(all_data->v, i, all_data->v->ny-1, source * (1.0 + 0.3 * spatial_mod));
                 }
             }
             break;
@@ -545,9 +450,9 @@ void apply_source(int timestep, int nx_glob, int ny_glob,
             int local_i = global_middle_i - START_I(gdata, topo->cart_rank);
             int local_j = global_middle_j - START_J(gdata, topo->cart_rank);
             
-            if (local_i >= 0 && local_i < (*all_data)->eta->nx &&
-                local_j >= 0 && local_j < (*all_data)->eta->ny) {
-                SET((*all_data)->eta, local_i, local_j, source);
+            if (local_i >= 0 && local_i < all_data->eta->nx &&
+                local_j >= 0 && local_j < all_data->eta->ny) {
+                SET(all_data->eta, local_i, local_j, source);
             }
             break;
         }
@@ -565,10 +470,10 @@ void apply_source(int timestep, int nx_glob, int ny_glob,
                 int local_i = source_positions[s][0] - START_I(gdata, topo->cart_rank);
                 int local_j = source_positions[s][1] - START_J(gdata, topo->cart_rank);
                 
-                if (local_i >= 0 && local_i < (*all_data)->eta->nx &&
-                    local_j >= 0 && local_j < (*all_data)->eta->ny) {
+                if (local_i >= 0 && local_i < all_data->eta->nx &&
+                    local_j >= 0 && local_j < all_data->eta->ny) {
                     double phase_shifted_source = A * sin(2.0 * M_PI * f * t + phase_shifts[s]) * envelope;
-                    SET((*all_data)->eta, local_i, local_j, phase_shifted_source);
+                    SET(all_data->eta, local_i, local_j, phase_shifted_source);
                 }
             }
             break;
@@ -582,9 +487,9 @@ void apply_source(int timestep, int nx_glob, int ny_glob,
             int local_i = source_i - START_I(gdata, topo->cart_rank);
             int local_j = source_j - START_J(gdata, topo->cart_rank);
             
-            if (local_i >= 0 && local_i < (*all_data)->eta->nx &&
-                local_j >= 0 && local_j < (*all_data)->eta->ny) {
-                SET((*all_data)->eta, local_i, local_j, source);
+            if (local_i >= 0 && local_i < all_data->eta->nx &&
+                local_j >= 0 && local_j < all_data->eta->ny) {
+                SET(all_data->eta, local_i, local_j, source);
             }
             break;
         }

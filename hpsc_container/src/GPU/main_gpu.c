@@ -46,10 +46,14 @@ int main(int argc, char **argv) {
         if(param.sampling_rate && !(n % param.sampling_rate)){
             #pragma omp target update from(*all_data->eta, *all_data->u, *all_data->v)
             write_data_vtk(all_data->eta, "water elevation", param.output_eta_filename, n);
+            write_data_vtk(all_data->u, "u elevation", param.output_u_filename, n);
         }
 
         apply_source(n, nx, ny, param, all_data);
-        boundary_condition(nx, ny, param, all_data);
+
+
+        boundary_conditions(nx, ny, param, all_data);
+
         update_eta(nx, ny, param, all_data);
         update_velocities(nx, ny, param, all_data);
        

@@ -1,4 +1,4 @@
-#include "shallow_opti.h"
+#include "shallow_pml.h"
 
 
 int read_parameters(parameters_t *param, const char *filename) {
@@ -207,8 +207,10 @@ int write_data(const data_t *data, const char *filename, int step)
 
 
 
-int write_data_vtk(data_t **data, const char *name,
-                   const char *filename, int step) {
+int write_data_vtk(const data_t *data,
+                   const char *name,
+                   const char *filename,
+                   int step) {
 
   char out[MAX_PATH_LENGTH];
  if(step < 0)
@@ -222,7 +224,7 @@ int write_data_vtk(data_t **data, const char *name,
     return 1;
   }
 
-  uint64_t num_points = (*data)->nx * (*data)->ny;
+  uint64_t num_points = (data)->nx * (data)->ny;
   uint64_t num_bytes = num_points * sizeof(double);
 
   fprintf(fp, "<?xml version=\"1.0\"?>\n");
@@ -230,9 +232,9 @@ int write_data_vtk(data_t **data, const char *name,
           "byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
   fprintf(fp, "  <ImageData WholeExtent=\"0 %d 0 %d 0 0\" "
           "Spacing=\"%lf %lf 0.0\">\n",
-          (*data)->nx - 1, (*data)->ny - 1, (*data)->dx, (*data)->dy);
+          (data)->nx - 1, (data)->ny - 1, (data)->dx, (data)->dy);
   fprintf(fp, "    <Piece Extent=\"0 %d 0 %d 0 0\">\n",
-          (*data)->nx - 1, (*data)->ny - 1);
+          (data)->nx - 1, (data)->ny - 1);
 
   fprintf(fp, "      <PointData Scalars=\"scalar_data\">\n");
   fprintf(fp, "        <DataArray type=\"Float64\" Name=\"%s\" "
@@ -246,7 +248,7 @@ int write_data_vtk(data_t **data, const char *name,
   fprintf(fp, "  <AppendedData encoding=\"raw\">\n_");
 
   fwrite(&num_bytes, sizeof(uint64_t), 1, fp);
-  fwrite((*data)->vals, sizeof(double), num_points, fp);
+  fwrite((data)->vals, sizeof(double), num_points, fp);
 
   fprintf(fp, "  </AppendedData>\n");
   fprintf(fp, "</VTKFile>\n");
@@ -292,15 +294,11 @@ int init_data(data_t *data, int nx, int ny, double dx, double dy, double val) {
     data->ny = ny;
     data->dx = dx;
     data->dy = dy;
-    data->total_size = (size_t)nx * (size_t)ny;
 
-    data->vals = (double*)calloc(data->total_size, sizeof(double));
+    data->vals = (double*)calloc(nx*ny, sizeof(double));
     if (data->vals == NULL) return 1;
 
-    printf("Initializing data with nx=%d, ny=%d, total_size=%zu\n", 
-           nx, ny, data->total_size);
-
-    for (int i = 0; i < data->total_size; i++) {
+    for (int i = 0; i < nx*ny; i++) {
         data->vals[i] = val;
     }
 
@@ -423,8 +421,6 @@ all_data_t* init_all_data(const parameters_t *param, MPITopology *topo) {
         free_all_data(all_data);
         return NULL;
     }
-
-    all_data->h->total_size = all_data->h->nx * all_data->h->ny;
 
     // Calculate global domain dimensions
     double hx = all_data->h->nx * all_data->h->dx;

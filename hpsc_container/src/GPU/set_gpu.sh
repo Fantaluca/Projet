@@ -3,12 +3,10 @@ set -e
 
 # Compilation settings
 PARAM_FILE="../../input_data/base_case/param_simple.txt"
-BIN_PATH="../../shallow_gpu"
+BIN_PATH="../../bin/shallow_gpu"
 
 # OpenMP settings
 export OMP_TARGET_OFFLOAD=MANDATORY
-export LIBOMPTARGET_PROFILE=0
-
 
 # Compile
 echo "Starting compilation..."

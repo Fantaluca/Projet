@@ -71,7 +71,7 @@ ENV CUDA_VISIBLE_DEVICES=0
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV CUDA_DEVICE_ORDER=PCI_BUS_ID
 
-WORKDIR /root/hpsc_container
+WORKDIR /opt/hpsc_container
 
 # docker build -t hpsc_image .
 # docker run --gpus all -v "${PWD}:/app" -it hpsc_image bash

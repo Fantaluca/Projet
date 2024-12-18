@@ -2,7 +2,8 @@
     "name": "Hpsc",
     "image": "hpsc_image",
     "mounts": [
-        "source=${localWorkspaceFolder}/hpsc_container,target=/root/hpsc_container,type=bind"
+        "source=${localWorkspaceFolder}/hpsc_container,target=/opt/hpsc_container,type=bind"
     ],
+    "workspaceFolder": "/opt/hpsc_container",
     "remoteUser": "root"
 }
