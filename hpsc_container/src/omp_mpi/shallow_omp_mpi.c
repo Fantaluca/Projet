@@ -1,35 +1,45 @@
+/*===========================================================
+ * SHALLOW WATER EQUATIONS SOLVER - PARALLEL MPI/OpenMP
+ * Implementation File
+ * Contains core computation routines and parallel algorithms
+ ===========================================================*/
+
 #include "shallow_omp_mpi.h"
 
 #undef MPI_STATUSES_IGNORE
 #define MPI_STATUSES_IGNORE (MPI_Status *)0 
 
-/*  ----------- WARNING --------------
-    - (i,j) : coords domain (global)
-    - (START_I(cart_rank), START_J(cart_rank)) : coords of subdomain (global -> local)
-    - (i_rank, j_rank) : relative coords in subdomain (local)
+/*===========================================================
+ * DOMAIN DECOMPOSITION AND INDEXING NOTES
+ ===========================================================*/
+/*  
+ * Grid coordinates mapping:
+ * - (i,j) : Global domain coordinates
+ * - (START_I(cart_rank), START_J(cart_rank)) : Global to local subdomain mapping
+ * - (i_rank, j_rank) : Local subdomain coordinates
+ * 
+ * Example grid decomposition (3x3):
+ *     0    4    8   12
+ *   0  +----+----+----+
+ *      |    |    |    |
+ *      | P0 | P1 | P2 |
+ *   4  +----+----+----+
+ *      |    |    |    |
+ *      | P3 | P4 | P5 |
+ *   8  +----+----+----+
+ *      |    |    |    |
+ *      | P6 | P7 | P8 |
+ *   12 +----+----+----+
+ *
+ * For point (6,7):
+ * - cart_rank = 4
+ * - (START_I(cart_rank), START_J(cart_rank)) = (4,4)
+ * - (i_rank, j_rank) = (6-4, 7-4) = (2,3)
+ */
 
-    ex :     0    4    8   12
-            0  +----+----+----+
-                |    |    |    |
-                | P0 | P1 | P2 |
-            4  +----+----+----+
-                |    |    |    |
-                | P3 | P4 | P5 |
-            8  +----+----+----+
-                |    |    |    |
-                | P6 | P7 | P8 |
-            12 +----+----+----+
-
-    If (i,j) = (6.7)
-
-    -> cart_rank = 4
-    -> (START_I(cart_rank), START_J(cart_rank)) = (4,4)
-    -> (i_rank, j_rank) = (6-4, 7-4) = (2,3)
------------------------------------- */ 
-
-
-
-/*=========== INITTIALIZATION AND CONFIGURATION FUNCTIONS ===============*/
+/*===========================================================
+ * INITIALIZATION AND CONFIGURATION FUNCTIONS 
+ ===========================================================*/
 
 int initialize_mpi_topology(int argc, char **argv, MPITopology *topo) {
     int err;
@@ -76,8 +86,6 @@ int initialize_gather_structures(const MPITopology *topo,
     
     // Initialize structure
     memset(gdata, 0, sizeof(gather_data_t));
-    
-    // Allocate arrays for gather operation
     gdata->recv_size_eta = calloc(topo->nb_process, sizeof(int));
     gdata->recv_size_u = calloc(topo->nb_process, sizeof(int));
     gdata->recv_size_v = calloc(topo->nb_process, sizeof(int));
@@ -119,7 +127,7 @@ int initialize_gather_structures(const MPITopology *topo,
     if (topo->cart_rank == 0) {
         int total_offset = 0;
         
-        // Browse processes in the order of the cartesian grid
+        // Search processes (in the order of the cartesian grid)
         for (int j = 0; j < topo->dims[1]; j++) {
             current_x = 0;  // Reset X position for each row
             
@@ -199,8 +207,9 @@ int initialize_gather_structures(const MPITopology *topo,
     return 0;
 }
 
-/* =============== PREPROCESS AND INTERPOLATION FUNCTIONS =======================*/
-
+/*===========================================================
+ * PREPROCESS AND INTERPOLATION FUNCTIONS 
+ ===========================================================*/
 double interpolate_data(const data_t *data,
                         int nx_glob, int ny_glob,
                         double x, 
@@ -252,7 +261,6 @@ void interp_bathy(const parameters_t param,
     int local_nx = all_data->h_interp->nx;
     int local_ny = all_data->h_interp->ny;
 
-    // Premier passage : interpolation locale
     #pragma omp parallel for
     for(int i = 0; i < local_nx; i++) {
         for(int j = 0; j < local_ny; j++) {
@@ -263,12 +271,10 @@ void interp_bathy(const parameters_t param,
         }
     }
 
-    // Synchronisation des frontières
     MPI_Request request_recv[4] = {MPI_REQUEST_NULL};
     MPI_Request request_send[4] = {MPI_REQUEST_NULL};
     MPI_Status status[4];
 
-    // Allouer les buffers
     double *send_left = calloc(local_ny, sizeof(double));
     double *send_right = calloc(local_ny, sizeof(double));
     double *send_down = calloc(local_nx, sizeof(double));
@@ -284,7 +290,6 @@ void interp_bathy(const parameters_t param,
     if (topo->neighbors[DOWN] != MPI_PROC_NULL) recv_down = calloc(local_nx, sizeof(double));
     if (topo->neighbors[UP] != MPI_PROC_NULL) recv_up = calloc(local_nx, sizeof(double));
 
-    // Préparer les buffers d'envoi
     for (int j = 0; j < local_ny; j++) {
         send_left[j] = GET(all_data->h_interp, 0, j);
         send_right[j] = GET(all_data->h_interp, local_nx-1, j);
@@ -294,7 +299,6 @@ void interp_bathy(const parameters_t param,
         send_up[i] = GET(all_data->h_interp, i, local_ny-1);
     }
 
-    // Poster les réceptions
     int recv_count = 0;
     if (topo->neighbors[LEFT] != MPI_PROC_NULL)
         MPI_Irecv(recv_left, local_ny, MPI_DOUBLE, topo->neighbors[LEFT], 0,
@@ -309,7 +313,6 @@ void interp_bathy(const parameters_t param,
         MPI_Irecv(recv_up, local_nx, MPI_DOUBLE, topo->neighbors[UP], 3,
                   topo->cart_comm, &request_recv[recv_count++]);
 
-    // Poster les envois
     int send_count = 0;
     if (topo->neighbors[RIGHT] != MPI_PROC_NULL)
         MPI_Isend(send_right, local_ny, MPI_DOUBLE, topo->neighbors[RIGHT], 0,
@@ -324,14 +327,11 @@ void interp_bathy(const parameters_t param,
         MPI_Isend(send_down, local_nx, MPI_DOUBLE, topo->neighbors[DOWN], 3,
                   topo->cart_comm, &request_send[send_count++]);
 
-    // Attendre que toutes les communications soient terminées
     if (recv_count > 0) MPI_Waitall(recv_count, request_recv, status);
     if (send_count > 0) MPI_Waitall(send_count, request_send, status);
 
-    // S'assurer que tout est bien synchronisé
     MPI_Barrier(topo->cart_comm);
 
-    // Libérer la mémoire
     free(send_left);
     free(send_right);
     free(send_down);
@@ -376,8 +376,9 @@ void check_cfl(parameters_t param, all_data_t *all_data, MPITopology *topo) {
 }
 
 
-/*============== BOUNDARY CONDITIONS =========================*/
-
+/*===========================================================
+ * BOUNDARY CONDITIONS AND SOURCE TERMS
+ ===========================================================*/
 void boundary_conditions(const parameters_t param, all_data_t *all_data, MPITopology *topo) {
 
     #pragma omp parallel for
@@ -491,8 +492,9 @@ void apply_source(int timestep, int nx_glob, int ny_glob,
 }
 
 
-/* =================== MAIN UPDATING FUNCTIONS ======================*/
-
+/*===========================================================
+ * MAIN COMPUTATION FUNCTIONS
+ ===========================================================*/
 void update_eta(const parameters_t param, 
                 all_data_t *all_data,
                 gather_data_t *gdata,
@@ -572,47 +574,28 @@ void update_eta(const parameters_t param,
     #pragma omp parallel for
     for (int j = 0; j < ny; j++) {
         for (int i = 0; i < nx; i++) {
-            // Get h values avec gestion des frontières
+
             double h_ui_j = GET(all_data->h_interp, i, j);
-            double h_vi_j = h_ui_j;  // Même point
-            
-            double h_ui_ip1_j, h_vi_jp1;
+            double h_vi_j = h_ui_j;
 
-            // Gestion des frontières pour h_ui_ip1_j
-            if (i < nx - 1) {
-                h_ui_ip1_j = GET(all_data->h_interp, i + 1, j);
-            } else {
-                h_ui_ip1_j = h_ui_j;  // Extrapolation à la frontière
-            }
-
-            // Gestion des frontières pour h_vi_jp1
-            if (j < ny - 1) {
-                h_vi_jp1 = GET(all_data->h_interp, i, j + 1);
-            } else {
-                h_vi_jp1 = h_vi_j;  // Extrapolation à la frontière
-            }
+            // boundary handling
+            double h_ui_ip1_j = (i < nx - 1) ? GET(all_data->h_interp, i + 1, j) : h_ui_j;
+            double h_vi_jp1 = (j < ny - 1) ? GET(all_data->h_interp, i, j + 1) : h_vi_j;
 
     
-
-            // Get u values with boundary handling
             double u_i = GET(all_data->u, i, j);
             double u_ip1 = (i < nx - 1) ? GET(all_data->u, i + 1, j)
                                        : (topo->neighbors[RIGHT] != MPI_PROC_NULL) ? recv_right[j] : u_i;
 
-            // Get v values with boundary handling
             double v_j = GET(all_data->v, i, j);
             double v_jp1 = (j < ny - 1) ? GET(all_data->v, i, j + 1)
                                        : (topo->neighbors[UP] != MPI_PROC_NULL) ? recv_up[i] : v_j;
 
-            // Calcul des dérivées spatiales
             double du_dx = (h_ui_ip1_j * u_ip1 - h_ui_j * u_i) / param.dx;
             double dv_dy = (h_vi_jp1 * v_jp1 - h_vi_j * v_j) / param.dy;
 
-            // Mise à jour de eta
             double eta_old = GET(all_data->eta, i, j);
             double eta_new = eta_old - param.dt * (du_dx + dv_dy);
-
-
             SET(all_data->eta, i, j, eta_new);
         }
     }
@@ -790,8 +773,9 @@ void update_velocities(const parameters_t param,
 
 
 
-/*============ COLLECTING FUNCTION ===========================*/
-
+/*===========================================================
+ * DATA COLLECTION AND OUTPUT FUNCTIONS
+ ===========================================================*/
 void gather_and_assemble_data(const parameters_t param,
                              all_data_t *all_data,
                              gather_data_t *gdata,
