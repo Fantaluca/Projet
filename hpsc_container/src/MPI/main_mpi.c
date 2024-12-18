@@ -69,26 +69,25 @@ int main(int argc, char **argv) {
     //----------------------//
 
     // Interpolate bathymetry
-    interp_bathy(param, nx_glob, ny_glob, &all_data, gdata, &topo);
+    interp_bathy(param, nx_glob, ny_glob, all_data, gdata, &topo);
 
     // Loop over timestep
     double start = GET_TIME(); 
     for (int n = 0; n < nt; n++) {
       
-      //boundary_source_condition(n, nx_glob, ny_glob, param, &all_data, gdata, &topo);
-      boundary_conditions(param , &all_data, &topo);
-      apply_source(n, nx_glob, ny_glob, param, &all_data, gdata, &topo);
+    	boundary_conditions(param , all_data, &topo);
+    	apply_source(n, nx_glob, ny_glob, param, all_data, gdata, &topo);
 
-      if (param.sampling_rate && !(n % param.sampling_rate)) 
-        gather_and_assemble_data(param, all_data, gdata, &topo, nx_glob, ny_glob, n);
+		if (param.sampling_rate && !(n % param.sampling_rate)) 
+			gather_and_assemble_data(param, all_data, gdata, &topo, nx_glob, ny_glob, n);
 
-      if (topo.cart_rank == 0 && param.sampling_rate && !(n % param.sampling_rate))
-          write_data_vtk(&(gdata->gathered_output), "water elevation", param.output_eta_filename, n);
-      
-      update_eta(param, &all_data, gdata, &topo);
-      update_velocities(param, &all_data, gdata, &topo);
+		if (topo.cart_rank == 0 && param.sampling_rate && !(n % param.sampling_rate))
+			write_data_vtk(&(gdata->gathered_output), "water elevation", param.output_eta_filename, n);
+		
+		update_eta(param, all_data, gdata, &topo);
+		update_velocities(param, all_data, gdata, &topo);
 
-      print_progress(n, nt, start, &topo);
+		print_progress(n, nt, start, &topo);
       
     }
 

@@ -1,6 +1,23 @@
+/*===========================================================
+ * SHALLOW WATER EQUATIONS SOLVER - PARALLEL GPU
+ * Tools Implementation File
+ * Contains I/O, initialization, and cleanup routines
+ ===========================================================*/
+
 #include "shallow_gpu.h"
 #include <ctype.h>
 
+/*===========================================================
+ * FILE I/O AND PARAMETERS FUNCTIONS
+ ===========================================================*/
+
+/**
+ * Reads simulation parameters from configuration file
+ * 
+ * @param param Pointer to parameters structure to fill
+ * @param filename Name of the configuration file
+ * @return 0 on success, 1 on failure
+ */
 int read_parameters(parameters_t *param, const char *filename) {
     char full_path[MAX_PATH_LENGTH];
     snprintf(full_path, sizeof(full_path), "%s%s", INPUT_DIR, filename);
@@ -17,90 +34,46 @@ int read_parameters(parameters_t *param, const char *filename) {
     int ok = 1;
 
     while(fgets(line, sizeof(line), fp) && ok) {
-
         char *start = line;
         while(*start && isspace(*start)) start++;
-
-        // ignore line if "#" symbol
+        
         if(*start == '\0' || *start == '#') continue;
 
-
         switch(param_count) {
-            case 0:
-                if(sscanf(start, "%lf", &param->dx) != 1) ok = 0;
-                break;
-            case 1:
-                if(sscanf(start, "%lf", &param->dy) != 1) ok = 0;
-                break;
-            case 2:
-                if(sscanf(start, "%lf", &param->dt) != 1) ok = 0;
-                break;
-            case 3:
-                if(sscanf(start, "%lf", &param->max_t) != 1) ok = 0;
-                break;
-            case 4:
-                if(sscanf(start, "%lf", &param->g) != 1) ok = 0;
-                break;
-            case 5:
-                if(sscanf(start, "%lf", &param->gamma) != 1) ok = 0;
-                break;
-            case 6:
-                if(sscanf(start, "%d", &param->source_type) != 1) ok = 0;
-                break;
-            case 7:
-                if(sscanf(start, "%d", &param->boundary_type) != 1) ok = 0;
-                break;
-            case 8:
-                if(sscanf(start, "%d", &param->sampling_rate) != 1) ok = 0;
-                break;
-            case 9: {
-                char temp[MAX_PATH_LENGTH];
-                // Extraire le premier mot non-commenté
+            case 0: if(sscanf(start, "%lf", &param->dx) != 1) ok = 0; break;
+            case 1: if(sscanf(start, "%lf", &param->dy) != 1) ok = 0; break;
+            case 2: if(sscanf(start, "%lf", &param->dt) != 1) ok = 0; break;
+            case 3: if(sscanf(start, "%lf", &param->max_t) != 1) ok = 0; break;
+            case 4: if(sscanf(start, "%lf", &param->g) != 1) ok = 0; break;
+            case 5: if(sscanf(start, "%lf", &param->gamma) != 1) ok = 0; break;
+            case 6: if(sscanf(start, "%d", &param->source_type) != 1) ok = 0; break;
+            case 7: if(sscanf(start, "%d", &param->sampling_rate) != 1) ok = 0; break;
+            case 8: {
                 token = strtok(start, " \t\n#");
                 if(!token || strlen(token) >= MAX_PATH_LENGTH) {
                     ok = 0;
                     break;
                 }
-                strncpy(temp, token, MAX_PATH_LENGTH-1);
-                temp[MAX_PATH_LENGTH-1] = '\0';
-                
-                if (strlen(INPUT_DIR) + strlen(temp) + 1 > MAX_PATH_LENGTH) {
+                if (strlen(INPUT_DIR) + strlen(token) + 1 > MAX_PATH_LENGTH) {
                     printf("Error: Path too long for input_h_filename\n");
                     ok = 0;
                 } else {
                     strcpy(param->input_h_filename, INPUT_DIR);
-                    strcat(param->input_h_filename, temp);
+                    strcat(param->input_h_filename, token);
                 }
                 break;
             }
-            case 10: {
+            case 9: case 10: case 11: {
                 token = strtok(start, " \t\n#");
                 if(!token || strlen(token) >= 256) {
                     ok = 0;
                     break;
                 }
-                strncpy(param->output_eta_filename, token, 255);
-                param->output_eta_filename[255] = '\0';
-                break;
-            }
-            case 11: {
-                token = strtok(start, " \t\n#");
-                if(!token || strlen(token) >= 256) {
-                    ok = 0;
-                    break;
-                }
-                strncpy(param->output_u_filename, token, 255);
-                param->output_u_filename[255] = '\0';
-                break;
-            }
-            case 12: {
-                token = strtok(start, " \t\n#");
-                if(!token || strlen(token) >= 256) {
-                    ok = 0;
-                    break;
-                }
-                strncpy(param->output_v_filename, token, 255);
-                param->output_v_filename[255] = '\0';
+                char *dest = (param_count == 9) ? param->output_eta_filename :
+                            (param_count == 10) ? param->output_u_filename :
+                                                param->output_v_filename;
+                strncpy(dest, token, 255);
+                dest[255] = '\0';
                 break;
             }
         }
@@ -109,16 +82,20 @@ int read_parameters(parameters_t *param, const char *filename) {
 
     fclose(fp);
 
-    // Check all parameters read
-    if(!ok || param_count != 13) {
-        printf("Error: Could not read one or more parameters in '%s'\n", full_path);
-        printf("Expected 13 parameters, got %d\n", param_count);
+    if(!ok || param_count != 12) {
+        printf("Error: Could not read parameters in '%s'. Expected 12, got %d\n", 
+               full_path, param_count);
         return 1;
     }
 
     return 0;
 }
 
+/**
+ * Displays current simulation parameters
+ * 
+ * @param param Pointer to parameters structure
+ */
 void print_parameters(const parameters_t *param)
 {
   printf("Parameters:\n");
@@ -135,6 +112,13 @@ void print_parameters(const parameters_t *param)
          param->output_u_filename, param->output_v_filename);
 }
 
+/**
+ * Reads data from binary file into data structure
+ * 
+ * @param data Data structure to fill
+ * @param filename Input file path
+ * @return 0 on success, 1 on failure
+ */
 int read_data(data_t *data, const char *filename)
 {
   printf("read_data function\n");
@@ -173,7 +157,14 @@ int read_data(data_t *data, const char *filename)
   return 0;
 }
 
-
+/**
+ * Writes data to binary file
+ * 
+ * @param data Data structure to write
+ * @param filename Output file base name
+ * @param step Time step number (-1 for single output)
+ * @return 0 on success, 1 on failure
+ */
 int write_data(const data_t *data, const char *filename, int step)
 {
   char out[MAX_PATH_LENGTH];
@@ -201,6 +192,15 @@ int write_data(const data_t *data, const char *filename, int step)
   return 0;
 }
 
+/**
+ * Writes data to VTK image format
+ * 
+ * @param data Data structure to write
+ * @param name Field name
+ * @param filename Output file base name
+ * @param step Time step number (-1 for single output)
+ * @return 0 on success, 1 on failure
+ */
 int write_data_vtk(const data_t *data, const char *name,
                    const char *filename, int step) {
 
@@ -249,6 +249,15 @@ int write_data_vtk(const data_t *data, const char *name,
   return 0;
 }
 
+/**
+ * Creates VTK manifest file for time series visualization
+ * 
+ * @param filename Base filename for VTK files
+ * @param dt Time step size
+ * @param nt Number of time steps
+ * @param sampling_rate Output frequency
+ * @return 0 on success, 1 on failure
+ */
 int write_manifest_vtk(const char *filename, double dt, int nt,
                        int sampling_rate)
 {
@@ -277,6 +286,19 @@ int write_manifest_vtk(const char *filename, double dt, int nt,
   return 0;
 }
 
+/*===========================================================
+ * INITIALIZATION AND MEMORY MANAGEMENT
+ ===========================================================*/
+
+/**
+ * Initializes data structure with given dimensions and value
+ * 
+ * @param data Data structure to initialize
+ * @param nx, ny Grid dimensions
+ * @param dx, dy Grid spacing
+ * @param val Initial value
+ * @return 0 on success, 1 on failure
+ */
 int init_data(data_t *data, int nx, int ny, double dx, double dy,
               double val)
 {
@@ -293,12 +315,13 @@ int init_data(data_t *data, int nx, int ny, double dx, double dy,
   return 0;
 }
 
-void free_data(data_t *data)
-{
-  free(data->values);
-}
 
-
+/**
+ * Initializes all simulation data structures
+ * 
+ * @param param Simulation parameters
+ * @return Initialized all_data_t structure or NULL on failure
+ */
 all_data_t* init_all_data(const parameters_t *param) {
   
     all_data_t* all_data = malloc(sizeof(all_data_t));
@@ -343,6 +366,44 @@ all_data_t* init_all_data(const parameters_t *param) {
     return all_data;
 }
 
+/**
+ * Releases memory for single data structure
+ * 
+ * @param data Data structure to free
+ */
+void free_data(data_t *data)
+{
+  free(data->values);
+}
+
+/**
+ * Releases memory for all data structures
+ * 
+ * @param all_data Main data structure to free
+ */
+void free_all_data(all_data_t* all_data){
+
+    free_data(all_data->h_interp);
+    free_data(all_data->eta);
+    free_data(all_data->u);
+    free_data(all_data->v);
+    free_data(all_data->h);
+
+    free(all_data);
+  
+}
+
+/*===========================================================
+ * UTILITY FUNCTIONS
+ ===========================================================*/
+
+/**
+ * Displays simulation progress information
+ * 
+ * @param current_step Current simulation step
+ * @param total_steps Total number of steps
+ * @param start_time Simulation start time
+ */
 void print_progress(int current_step, int total_steps, double start_time) {
 
     if (current_step > 0 && 
@@ -357,14 +418,3 @@ void print_progress(int current_step, int total_steps, double start_time) {
     }
 }
 
-void free_all_data(all_data_t* all_data){
-
-    free_data(all_data->h_interp);
-    free_data(all_data->eta);
-    free_data(all_data->u);
-    free_data(all_data->v);
-    free_data(all_data->h);
-
-    free(all_data);
-  
-}

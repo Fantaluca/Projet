@@ -1,5 +1,23 @@
+/*===========================================================
+ * SHALLOW WATER EQUATIONS SOLVER - SERIAL VERSION
+ * Implementation File
+ * Contains core computation routines and algorithms
+ ===========================================================*/
+
 #include "shallow_omp.h"
 
+/*===========================================================
+ * INTERPOLATION FUNCTIONS
+ ===========================================================*/
+
+/**
+ * Performs bilinear interpolation of data at given coordinates
+ * 
+ * @param data Source data structure
+ * @param x X-coordinate for interpolation
+ * @param y Y-coordinate for interpolation
+ * @return Interpolated value at (x,y)
+ */
 double interpolate_data(const data_t *data, double x, double y) {
     int i = (int)(x / data->dx);
     int j = (int)(y / data->dy);
@@ -23,142 +41,23 @@ double interpolate_data(const data_t *data, double x, double y) {
     double Q21 = GET(data, i + 1, j);
     double Q22 = GET(data, i + 1, j + 1);
 
-    // Weighted coef
+    // Weighted coefficients
     double wx = (x2 - x) / (x2 - x1);
     double wy = (y2 - y) / (y2 - y1);
 
-    double val = wx * wy * Q11 +
-                 (1 - wx) * wy * Q21 +
-                 wx * (1 - wy) * Q12 +
-                 (1 - wx) * (1 - wy) * Q22;
-
-    return val;
+    return wx * wy * Q11 +
+           (1 - wx) * wy * Q21 +
+           wx * (1 - wy) * Q12 +
+           (1 - wx) * (1 - wy) * Q22;
 }
 
-void update_eta(int nx, int ny, const parameters_t param, all_data_t *all_data) {
-    #pragma omp parallel for
-    for (int i = 0; i < nx; i++) {
-        for (int j = 0; j < ny; j++) {
-            // Check boundaries to prevent out-of-bounds access
-            double h_ui_plus_1_j = (i < nx - 1) ? GET(all_data->h_interp, i + 1, j) : GET(all_data->h_interp, i, j);
-            double h_ui_j = GET(all_data->h_interp, i, j);
-            double h_vi_j_plus_1 = (j < ny - 1) ? GET(all_data->h_interp, i, j + 1) : GET(all_data->h_interp, i, j);
-            double h_vi_j = GET(all_data->h_interp, i, j);
-
-            double u_ip1_j = (i < nx - 1) ? GET(all_data->u, i + 1, j) : GET(all_data->u, i, j);
-            double u_i_j = GET(all_data->u, i, j);
-            double v_i_jp1 = (j < ny - 1) ? GET(all_data->v, i, j + 1) : GET(all_data->v, i, j);
-            double v_i_j = GET(all_data->v, i, j);
-
-            double c1_x = param.dt / param.dx;
-            double c1_y = param.dt / param.dy;
-
-            double eta_ij = GET(all_data->eta, i, j)
-                - c1_x * (h_ui_plus_1_j * u_ip1_j - h_ui_j * u_i_j)
-                - c1_y * (h_vi_j_plus_1 * v_i_jp1 - h_vi_j * v_i_j);
-
-            SET(all_data->eta, i, j, eta_ij);
-        }
-    }
-}
-
-
-void update_velocities(int nx, int ny, const parameters_t param, all_data_t *all_data) {
-    #pragma omp parallel for
-    for(int i = 0; i < nx; i++) {
-        for(int j = 0; j < ny; j++) {
-            double c1 = param.dt * param.g;
-            double c2 = param.dt * param.gamma;
-            double eta_ij = GET(all_data->eta, i, j);
-            double eta_imj = GET(all_data->eta, (i == 0) ? 0 : i - 1, j);
-            double eta_ijm = GET(all_data->eta, i, (j == 0) ? 0 : j - 1);
-            double u_ij = (1. - c2) * GET(all_data->u, i, j)
-                - c1 / param.dx * (eta_ij - eta_imj);
-            double v_ij = (1. - c2) * GET(all_data->v, i, j)
-                - c1 / param.dy * (eta_ij - eta_ijm);
-            SET(all_data->u, i, j, u_ij);
-            SET(all_data->v, i, j, v_ij);
-        }
-    }
-}
-
-void boundary_source_condition(int n, int nx, int ny, const parameters_t param, all_data_t *all_data) {
-    double t = n * param.dt;
-    if(param.source_type == 1) {
-        // sinusoidal velocity on top boundary
-        double A = 5;
-        double f = 1. / 20.;
-        #pragma omp parallel for
-        for(int i = 0; i < nx; i++) {
-            for(int j = 0; j < ny; j++) {
-                SET(all_data->u, 0, j, 0.);
-                SET(all_data->u, nx, j, 0.);
-                SET(all_data->v, i, 0, 0.);
-                SET(all_data->v, i, ny, A * sin(2 * M_PI * f * t));
-            }
-        }
-    }
-    else if(param.source_type == 2) {
-        // sinusoidal elevation in the middle of the domain
-        double A = 5;
-        double f = 1. / 20.;
-        SET(all_data->eta, nx / 2, ny / 2, A * sin(2 * M_PI * f * t));
-
-        // Apply boundary condition on (eta, u, v) for each corners of the domain
-        #pragma omp parallel for 
-        for(int i = 0; i < nx; i++) {
-            double h_bottom = GET(all_data->h_interp, i, 0);
-            double h_top = GET(all_data->h_interp, i, ny-1);
-            double c_bottom = sqrt(param.g * h_bottom);
-            double c_top = sqrt(param.g * h_top);
-
-            // Bottom corner
-            SET(all_data->eta, i, 0, GET(all_data->eta, i, 1) - (c_bottom * param.dt / param.dy) * 
-                (GET(all_data->eta, i, 1) - GET(all_data->eta, i, 0)));
-            SET(all_data->u, i, 0, GET(all_data->u, i, 1) - (c_bottom * param.dt / param.dy) * 
-                (GET(all_data->u, i, 1) - GET(all_data->u, i, 0)));
-            SET(all_data->v, i, 0, GET(all_data->v, i, 1) - (c_bottom * param.dt / param.dy) * 
-                (GET(all_data->v, i, 1) - GET(all_data->v, i, 0)));
-
-            // Top corner
-            SET(all_data->eta, i, ny-1, GET(all_data->eta, i, ny-2) - (c_top * param.dt / param.dy) * 
-                (GET(all_data->eta, i, ny-1) - GET(all_data->eta, i, ny-2)));
-            SET(all_data->u, i, ny-1, GET(all_data->u, i, ny-2) - (c_top * param.dt / param.dy) * 
-                (GET(all_data->u, i, ny-1) - GET(all_data->u, i, ny-2)));
-            SET(all_data->v, i, ny-1, GET(all_data->v, i, ny-2) - (c_top * param.dt / param.dy) * 
-                (GET(all_data->v, i, ny-1) - GET(all_data->v, i, ny-2)));
-        }
-
-        #pragma omp parallel for 
-        for(int j = 0; j < ny; j++) {
-            double h_left = GET(all_data->h_interp, 0, j);
-            double h_right = GET(all_data->h_interp, nx-1, j);
-            double c_left = sqrt(param.g * h_left);
-            double c_right = sqrt(param.g * h_right);
-
-            // Left corner
-            SET(all_data->eta, 0, j, GET(all_data->eta, 1, j) - (c_left * param.dt / param.dx) * 
-                (GET(all_data->eta, 1, j) - GET(all_data->eta, 0, j)));
-            SET(all_data->u, 0, j, GET(all_data->u, 1, j) - (c_left * param.dt / param.dx) * 
-                (GET(all_data->u, 1, j) - GET(all_data->u, 0, j)));
-            SET(all_data->v, 0, j, GET(all_data->v, 1, j) - (c_left * param.dt / param.dx) * 
-                (GET(all_data->v, 1, j) - GET(all_data->v, 0, j)));
-
-            // Right corner
-            SET(all_data->eta, nx-1, j, GET(all_data->eta, nx-2, j) - (c_right * param.dt / param.dx) * 
-                (GET(all_data->eta, nx-1, j) - GET(all_data->eta, nx-2, j)));
-            SET(all_data->u, nx-1, j, GET(all_data->u, nx-2, j) - (c_right * param.dt / param.dx) * 
-                (GET(all_data->u, nx-1, j) - GET(all_data->u, nx-2, j)));
-            SET(all_data->v, nx-1, j, GET(all_data->v, nx-2, j) - (c_right * param.dt / param.dx) * 
-                (GET(all_data->v, nx-1, j) - GET(all_data->v, nx-2, j)));
-        }
-    }
-    else {
-        printf("Error: Unknown source type %d\n", param.source_type);
-        exit(0);
-    }
-}
-
+/**
+ * Interpolates bathymetry data onto computation grid
+ * 
+ * @param nx, ny Grid dimensions
+ * @param param Simulation parameters
+ * @param all_data Data structures containing fields
+ */
 void interp_bathy(int nx, int ny, const parameters_t param, all_data_t *all_data) {
     #pragma omp parallel for
     for(int i = 0; i < nx; i++) {
@@ -168,5 +67,143 @@ void interp_bathy(int nx, int ny, const parameters_t param, all_data_t *all_data
             double val = interpolate_data(all_data->h, x, y);
             SET(all_data->h_interp, i, j, val);
         }
+    }
+}
+
+/*===========================================================
+ * MAIN COMPUTATION FUNCTIONS
+ ===========================================================*/
+
+/**
+ * Updates water height (eta) using shallow water equations
+ * 
+ * @param nx, ny Grid dimensions
+ * @param param Simulation parameters
+ * @param all_data Data structures containing fields
+ */
+void update_eta(int nx, int ny, const parameters_t param, all_data_t *all_data) {
+    #pragma omp parallel for
+    for (int i = 0; i < nx; i++) {
+        for (int j = 0; j < ny; j++) {
+            // Get bathymetry values with boundary handling
+            double h_ui_plus_1_j = (i < nx - 1) ? GET(all_data->h_interp, i + 1, j) : GET(all_data->h_interp, i, j);
+            double h_ui_j = GET(all_data->h_interp, i, j);
+            double h_vi_j_plus_1 = (j < ny - 1) ? GET(all_data->h_interp, i, j + 1) : GET(all_data->h_interp, i, j);
+            double h_vi_j = GET(all_data->h_interp, i, j);
+
+            // Get velocity values with boundary handling
+            double u_ip1_j = (i < nx - 1) ? GET(all_data->u, i + 1, j) : GET(all_data->u, i, j);
+            double u_i_j = GET(all_data->u, i, j);
+            double v_i_jp1 = (j < ny - 1) ? GET(all_data->v, i, j + 1) : GET(all_data->v, i, j);
+            double v_i_j = GET(all_data->v, i, j);
+
+            // Compute spatial derivatives
+            double c1_x = param.dt / param.dx;
+            double c1_y = param.dt / param.dy;
+
+            // Update eta value
+            double eta_ij = GET(all_data->eta, i, j)
+                - c1_x * (h_ui_plus_1_j * u_ip1_j - h_ui_j * u_i_j)
+                - c1_y * (h_vi_j_plus_1 * v_i_jp1 - h_vi_j * v_i_j);
+
+            SET(all_data->eta, i, j, eta_ij);
+        }
+    }
+}
+
+/**
+ * Updates velocity fields (u,v) using shallow water equations
+ * 
+ * @param nx, ny Grid dimensions
+ * @param param Simulation parameters
+ * @param all_data Data structures containing fields
+ */
+void update_velocities(int nx, int ny, const parameters_t param, all_data_t *all_data) {
+    #pragma omp parallel for
+    for(int i = 0; i < nx; i++) {
+        for(int j = 0; j < ny; j++) {
+            // Compute coefficients
+            double c1 = param.dt * param.g;
+            double c2 = param.dt * param.gamma;
+
+            // Get eta values with boundary handling
+            double eta_ij = GET(all_data->eta, i, j);
+            double eta_imj = GET(all_data->eta, (i == 0) ? 0 : i - 1, j);
+            double eta_ijm = GET(all_data->eta, i, (j == 0) ? 0 : j - 1);
+
+            // Update velocities
+            double u_ij = (1. - c2) * GET(all_data->u, i, j)
+                - c1 / param.dx * (eta_ij - eta_imj);
+            double v_ij = (1. - c2) * GET(all_data->v, i, j)
+                - c1 / param.dy * (eta_ij - eta_ijm);
+
+            SET(all_data->u, i, j, u_ij);
+            SET(all_data->v, i, j, v_ij);
+        }
+    }
+}
+
+/*===========================================================
+ * BOUNDARY CONDITIONS AND SOURCE TERMS
+ ===========================================================*/
+
+/**
+ * Apply boundary conditions to velocity fields
+ * Sets appropriate values at domain boundaries
+ * 
+ * @param nx, ny Grid dimensions
+ * @param param Simulation parameters
+ * @param all_data Data structures containing fields
+ */
+void boundary_conditions(int nx, int ny, const parameters_t param, all_data_t *all_data) {
+    // Apply boundary condition on velocities
+    #pragma omp parallel for
+    for (int j = 0; j < ny; j++) {
+        // Left and right boundaries for u
+        SET(all_data->u, 0, j, 0.0);
+        SET(all_data->u, nx, j, 0.0);
+    }
+
+    #pragma omp parallel for
+    for (int i = 0; i < nx; i++) {
+        // Top and bottom boundaries for v
+        SET(all_data->v, i, 0, 0.0);
+        SET(all_data->v, i, ny, 0.0);
+    }
+}
+
+/**
+ * Apply source terms according to simulation type
+ * 
+ * @param timestep Current simulation timestep
+ * @param nx, ny Grid dimensions
+ * @param param Simulation parameters
+ * @param all_data Data structures containing fields
+ */
+void apply_source(int timestep, int nx, int ny, const parameters_t param, all_data_t *all_data) {
+    double t = timestep * param.dt;
+    const double A = 5.0;        // Amplitude 
+    const double f = 1.0 / 20.0; // Frequency
+    double source = A * sin(2.0 * M_PI * f * t);
+    
+    switch(param.source_type) {
+        case 1: {  // Top boundary wave maker
+            #pragma omp parallel for
+            for(int i = 0; i < nx; i++) {
+                double x_pos = i * param.dx;
+                double spatial_mod = sin(2.0 * M_PI * x_pos / (nx * param.dx) * 2);
+                SET(all_data->v, i, ny, source * (1.0 + 0.3 * spatial_mod));
+            }
+            break;
+        }
+        
+        case 2: {  // Central point source
+            SET(all_data->eta, nx / 2, ny / 2, source);
+            break;
+        }
+
+        default:
+            printf("Error: Unknown source type %d\n", param.source_type);
+            exit(1);
     }
 }

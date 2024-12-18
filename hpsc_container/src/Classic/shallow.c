@@ -52,24 +52,24 @@ double update_eta(int nx,
 
   for (int i = 0; i < nx; i++) {
     for (int j = 0; j < ny; j++) {
-      double h_ui_plus_1_j = (i < nx - 1) ? GET(h_interp, i + 1, j) : GET(h_interp, i, j);
-      double h_ui_j = GET(h_interp, i, j);
-      double h_vi_j_plus_1 = (j < ny - 1) ? GET(h_interp, i, j + 1) : GET(h_interp, i, j);
-      double h_vi_j = GET(h_interp, i, j);
+		double h_ui_plus_1_j = (i < nx - 1) ? GET(h_interp, i + 1, j) : GET(h_interp, i, j);
+		double h_ui_j = GET(h_interp, i, j);
+		double h_vi_j_plus_1 = (j < ny - 1) ? GET(h_interp, i, j + 1) : GET(h_interp, i, j);
+		double h_vi_j = GET(h_interp, i, j);
 
-      double u_ip1_j = (i < nx - 1) ? GET(u, i + 1, j) : GET(u, i, j);
-      double u_i_j = GET(u, i, j);
-      double v_i_jp1 = (j < ny - 1) ? GET(v, i, j + 1) : GET(v, i, j);
-      double v_i_j = GET(v, i, j);
+		double u_ip1_j = (i < nx - 1) ? GET(u, i + 1, j) : GET(u, i, j);
+		double u_i_j = GET(u, i, j);
+		double v_i_jp1 = (j < ny - 1) ? GET(v, i, j + 1) : GET(v, i, j);
+		double v_i_j = GET(v, i, j);
 
-      double c1_x = param.dt / param.dx;
-      double c1_y = param.dt / param.dy;
+		double c1_x = param.dt / param.dx;
+		double c1_y = param.dt / param.dy;
 
-      double eta_ij = GET(eta, i, j)
-        - c1_x * (h_ui_plus_1_j * u_ip1_j - h_ui_j * u_i_j)
-        - c1_y * (h_vi_j_plus_1 * v_i_jp1 - h_vi_j * v_i_j);
+		double eta_ij = GET(eta, i, j)
+		- c1_x * (h_ui_plus_1_j * u_ip1_j - h_ui_j * u_i_j)
+		- c1_y * (h_vi_j_plus_1 * v_i_jp1 - h_vi_j * v_i_j);
 
-      SET(eta, i, j, eta_ij);
+		SET(eta, i, j, eta_ij);
     }
   }
 }
@@ -85,17 +85,17 @@ double update_velocities(int nx,
   for(int i = 0; i < nx; i++){
     for(int j = 0; j < ny; j++){
 
-      double c1 = param.dt * param.g;
-      double c2 = param.dt * param.gamma;
-      double eta_ij = GET(eta, i, j);
-      double eta_imj = GET(eta, (i == 0) ? 0 : i - 1, j);
-      double eta_ijm = GET(eta, i, (j == 0) ? 0 : j - 1);
-      double u_ij = (1. - c2) * GET(u, i, j)
-        - c1 / param.dx * (eta_ij - eta_imj);
-      double v_ij = (1. - c2) * GET(v, i, j)
-        - c1 / param.dy * (eta_ij - eta_ijm);
-      SET(u, i, j, u_ij);
-      SET(v, i, j, v_ij);
+		double c1 = param.dt * param.g;
+		double c2 = param.dt * param.gamma;
+		double eta_ij = GET(eta, i, j);
+		double eta_imj = GET(eta, (i == 0) ? 0 : i - 1, j);
+		double eta_ijm = GET(eta, i, (j == 0) ? 0 : j - 1);
+		double u_ij = (1. - c2) * GET(u, i, j)
+		- c1 / param.dx * (eta_ij - eta_imj);
+		double v_ij = (1. - c2) * GET(v, i, j)
+		- c1 / param.dy * (eta_ij - eta_ijm);
+		SET(u, i, j, u_ij);
+		SET(v, i, j, v_ij);
     }
   }
 }
@@ -115,12 +115,12 @@ void boundary_condition(int n,
       double A = 5;
       double f = 1. / 20.;
       for(int i = 0; i < nx; i++) {
-        for(int j = 0; j < ny; j++){
+		for(int j = 0; j < ny; j++){
 
-          SET(u, 0, j, 0.);
-          SET(u, nx, j, 0.);
-          SET(v, i, 0, 0.);
-          SET(v, i, ny, A * sin(2 * M_PI * f * t));
+			SET(u, 0, j, 0.);
+			SET(u, nx, j, 0.);
+			SET(v, i, 0, 0.);
+			SET(v, i, ny, A * sin(2 * M_PI * f * t));
         }
       }
     }
@@ -147,10 +147,10 @@ void interp_bathy(int nx,
   for(int i = 0; i < nx; i++){
     for(int j = 0; j < ny; j++){
 
-      double x = i * param.dx;
-      double y = j * param.dy;
-      double val = interpolate_data(h, x, y);
-      SET(h_interp, i, j, val);
+		double x = i * param.dx;
+		double y = j * param.dy;
+		double val = interpolate_data(h, x, y);
+		SET(h_interp, i, j, val);
     }
   }
 }
