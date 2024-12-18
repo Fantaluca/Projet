@@ -569,7 +569,7 @@ void update_eta(const parameters_t param,
     }
 
     // Update eta with proper boundary handling
-    #pragma omp parallel for collapse(2)
+    #pragma omp parallel for
     for (int j = 0; j < ny; j++) {
         for (int i = 0; i < nx; i++) {
             // Get h values avec gestion des frontières
