@@ -12,7 +12,8 @@
         "chrono": "c",
         "functional": "c",
         "shallow_serial.h": "c",
-        "ctype.h": "c"
+        "ctype.h": "c",
+        "shallow_coriolis_pml.h": "c"
     },
     "C_Cpp.default.compilerPath": "C:\\Users\\lucas\\mingw64\\bin\\gcc.exe"
 }

@@ -1,33 +1,42 @@
-#include "shallow_pml.h"
+#include "shallow_coriolis_pml.h"
+#include <stdlib.h> 
+
 
 #undef MPI_STATUSES_IGNORE
-#define MPI_STATUSES_IGNORE (MPI_Status *)0 // temporary to get rid of "warning: 'MPI_Waitall' accessing 20 bytes in a region of size 0 [-Wstringop-overflow=]"
+#define MPI_STATUSES_IGNORE (MPI_Status *)0
 
 
 int main(int argc, char **argv) {
+
+    char* omp_num_threads_str = getenv("OMP_NUM_THREADS");
+    int num_threads = omp_num_threads_str ? atoi(omp_num_threads_str) : 8;
+    omp_set_num_threads(num_threads); 
 
     if (argc != 2) {
         printf("Usage: %s parameter_file\n", argv[0]);
         return 1;
     }
 
-
     //---------------------------------//
     // INITIALIZE MPI, PARAMS AND DATA //
     //---------------------------------//
     MPITopology topo;
     if (initialize_mpi_topology(argc, argv, &topo)) {
-      MPI_Finalize();
+      MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
 
     parameters_t param;
-    if (read_parameters(&param, argv[1])) return 1;
+    if (read_parameters(&param, argv[1])) {
+        MPI_Abort(topo.cart_comm, 1); 
+        return 1;
+    }
     if (topo.cart_rank == 0) print_parameters(&param);
 
     all_data_t* all_data = init_all_data(&param, &topo);
     if (all_data == NULL) {
         fprintf(stderr, "Failed to initialize all_data\n");
+        MPI_Abort(topo.cart_comm, 1); 
         return 1;
     }
 
@@ -50,18 +59,17 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Rank %d: Failed to allocate gdata\n", topo.cart_rank);
         free_all_data(all_data);
         cleanup_mpi_topology(&topo);  
-        MPI_Finalize();              
+        MPI_Abort(topo.cart_comm, 1);           
         return 1;
     }
     memset(gdata, 0, sizeof(gather_data_t));
-    MPI_Barrier(topo.cart_comm);
 
     if(initialize_gather_structures(&topo, gdata, nx_glob, ny_glob, param.dx, param.dy)) {
         fprintf(stderr, "Rank %d: Failed to initialize gather structures\n", topo.cart_rank);
         cleanup(&param, &topo, gdata); 
         free_all_data(all_data);
         cleanup_mpi_topology(&topo);
-        MPI_Finalize();
+        MPI_Abort(topo.cart_comm, 1);
         return 1;
     }
 
@@ -71,27 +79,28 @@ int main(int argc, char **argv) {
 
     // Interpolate bathymetry
     interp_bathy(param, nx_glob, ny_glob, all_data, gdata, &topo);
+	  check_cfl(param, all_data, &topo);
 
     // Loop over timestep
     double start = GET_TIME(); 
     for (int n = 0; n < nt; n++) {
-      
-    
-      boundary_conditions(param, all_data, &topo);
-      apply_source(n, nx_glob, ny_glob, param, all_data, gdata, &topo);
-    
 
-      if (param.sampling_rate && !(n % param.sampling_rate)) 
-        gather_and_assemble_data(param, all_data, gdata, &topo, nx_glob, ny_glob, n);
+		if (param.sampling_rate && !(n % param.sampling_rate)) 
+			gather_and_assemble_data(param, all_data, gdata, &topo, nx_glob, ny_glob, n);
 
-      if (topo.cart_rank == 0 && param.sampling_rate && !(n % param.sampling_rate))
-          write_data_vtk((gdata->gathered_output), "water elevation", param.output_eta_filename, n);
-      
-      update_eta(param, all_data, gdata, &topo);
-      update_velocities(param, all_data, gdata, &topo);
+		if (topo.cart_rank == 0 && param.sampling_rate && !(n % param.sampling_rate)){
+			write_data_vtk((gdata->gathered_output), "water elevation", param.output_eta_filename, n);
+			
+		}
 
-      print_progress(n, nt, start, &topo);
-      
+		//boundary_conditions(param, all_data, &topo);
+		apply_source(n, nx_glob, ny_glob, param, all_data, gdata, &topo);
+		
+		update_eta(param, all_data, gdata, &topo);
+		update_velocities(param, all_data, gdata, &topo);
+
+		if (topo.rank ==0) print_progress(n, nt, start, &topo);
+
     }
 
   if (topo.rank ==0){
