@@ -237,9 +237,10 @@ int write_data(const data_t *data, const char *filename, int step) {
 int write_data_vtk(const data_t *data, const char *name,
                    const char *filename, int step) {
     char out[MAX_PATH_LENGTH];
-    sprintf(out, "../../output/%s%s.vti", filename,
-            (step < 0) ? "" : "_");
-    if(step >= 0) sprintf(out + strlen(out), "%d", step);
+    sprintf(out, "../../output/%s", filename);
+    if (step >= 0) sprintf(out + strlen(out), "_%d", step);
+    strcat(out, ".vti");
+
 
     FILE *fp = fopen(out, "wb");
     if(!fp) {
