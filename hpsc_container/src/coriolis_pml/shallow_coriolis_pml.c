@@ -618,7 +618,7 @@ void update_eta(const parameters_t param,
 
 static inline double pml_sigma(int i, int j, int nx_glob, int ny_glob, int pml_width) {
     double sigma = 0.0;
-    double sigma_max = 10.0;  // Increased for stronger absorption
+    double sigma_max = 50.0;  // Increased for stronger absorption
     
     if (i < pml_width) {
         double x = (double)(pml_width - i) / pml_width;
@@ -653,7 +653,8 @@ void update_velocities(const parameters_t param,
 
     int nx = all_data->eta->nx;
     int ny = all_data->eta->ny;
-    const int pml_width = 20;  // Width of PML layer
+    double pml_L = 400.0;  
+    const int pml_width = pml_L/(fmin(param.dx,param.dy));  // Width of PML layer
     
     // Calculate global dimensions
     double hx = all_data->h->nx * all_data->h->dx;
@@ -835,13 +836,13 @@ void update_velocities(const parameters_t param,
 
             if (global_i < pml_width || global_i >= nx_glob - pml_width ||
                 global_j < pml_width || global_j >= ny_glob - pml_width) {
-                printf("Position: global_i=%d, global_j=%d, nx_glob=%d, ny_glob=%d\n", 
-                    global_i, global_j, nx_glob, ny_glob);
+                //printf("Position: global_i=%d, global_j=%d, nx_glob=%d, ny_glob=%d\n", 
+                //    global_i, global_j, nx_glob, ny_glob);
                 double sigma = pml_sigma(global_i, global_j, nx_glob, ny_glob, pml_width);
-                printf("Sigma value: %f\n", sigma);
+                //printf("Sigma value: %f\n", sigma);
                 double factor = exp(-sigma * param.dt);
-                printf("Attenuation factor: %f\n", factor);
-                printf("Old value: %f, New value: %f\n", new_v, new_v * factor);
+                //printf("Attenuation factor: %f\n", factor);
+                //printf("Old value: %f, New value: %f\n", new_v, new_v * factor);
                 new_v *= factor;
             }
             
