@@ -4,7 +4,7 @@
 
 # Configuration temporelle
 0.05 # dt (s)
-400  # max_t (s)
+600  # max_t (s)
 
 # Paramètres physiques
 9.81    # g (m/s²)

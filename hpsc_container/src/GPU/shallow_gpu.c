@@ -224,22 +224,76 @@ void apply_source(int n, int nx, int ny, const parameters_t param, all_data_t *a
     double A = 5.0;
     double f = 1.0 / 20.0;
     
-    if(param.source_type == 1) {
-        #pragma omp target teams distribute parallel for \
-            map(tofrom: v_gpu[0:nx*(ny+1)])
-        for(int i = 0; i < nx; i++) {
-            for(int j = 0; j < ny + 1; j++) {
-                if(j == ny) {
-                    v_gpu[nx * j + i] = A * sin(2 * M_PI * f * t);
+    double t_start = 5.0 / f;
+    double envelope = 1.0 - exp(-(t/t_start) * (t/t_start));
+    double source = A * sin(2 * M_PI * f * t) * envelope;
+
+    switch(param.source_type) {
+        case 1:
+            #pragma omp target teams distribute parallel for \
+                map(tofrom: v_gpu[0:nx*(ny+1)])
+            for(int i = 0; i < nx; i++) {
+                for(int j = 0; j < ny + 1; j++) {
+                    if(j == ny) {
+                        double x_pos = i * param.dx;
+                        double spatial_mod = sin(2.0 * M_PI * x_pos / (nx * param.dx) * 2);
+                        v_gpu[nx * j + i] = source * (1.0 + 0.3 * spatial_mod);
+                    }
                 }
             }
-        }
-    }
-    else if(param.source_type == 2) {
-        #pragma omp target \
-            map(tofrom: eta_gpu[0:nx*ny])
-        {
-            eta_gpu[nx * (ny/2) + nx/2] = A * sin(2 * M_PI * f * t);
-        }
+            break;
+
+        case 2:
+            #pragma omp target \
+                map(tofrom: eta_gpu[0:nx*ny])
+            {
+                eta_gpu[nx * (ny/2) + nx/2] = source;
+            }
+            break;
+
+        case 3:
+            {
+                const int num_sources = 3;
+                int source_positions[3][2] = {
+                    {nx/4, ny/4},
+                    {nx/2, ny/2},
+                    {3*nx/4, 3*ny/4}
+                };
+                double phase_shifts[3] = {0.0, 2.0*M_PI/3.0, 4.0*M_PI/3.0};
+
+                #pragma omp target \
+                    map(tofrom: eta_gpu[0:nx*ny])
+                {
+                    for (int s = 0; s < num_sources; s++) {
+                        int i = source_positions[s][0];
+                        int j = source_positions[s][1];
+                        if (i >= 0 && i < nx && j >= 0 && j < ny) {
+                            double phase_shifted_source = A * sin(2.0 * M_PI * f * t + phase_shifts[s]) * envelope;
+                            eta_gpu[nx * j + i] = phase_shifted_source;
+                        }
+                    }
+                }
+            }
+            break;
+
+        case 4:
+            {
+                double speed = 0.004;
+                int source_i = (int)(nx/4 + (nx/2) * sin(speed * t));
+                int source_j = (int)(ny/2 + (ny/4) * cos(speed * t));
+
+                #pragma omp target \
+                    map(tofrom: eta_gpu[0:nx*ny])
+                {
+                    if (source_i >= 0 && source_i < nx && source_j >= 0 && source_j < ny) {
+                        eta_gpu[nx * source_j + source_i] = source;
+                    }
+                }
+            }
+            break;
+
+        default:
+            printf("Warning: Unknown source type %d\n", param.source_type);
+            break;
     }
 }

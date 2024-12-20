@@ -184,7 +184,11 @@ void apply_source(int timestep, int nx, int ny, const parameters_t param, all_da
     double t = timestep * param.dt;
     const double A = 5.0;        // Amplitude 
     const double f = 1.0 / 20.0; // Frequency
-    double source = A * sin(2.0 * M_PI * f * t);
+    
+    // Ajout de l'enveloppe temporelle
+    double t_start = 5.0 / f;
+    double envelope = 1.0 - exp(-(t/t_start) * (t/t_start));
+    double source = A * sin(2.0 * M_PI * f * t) * envelope;
     
     switch(param.source_type) {
         case 1: {  // Top boundary wave maker
@@ -199,6 +203,37 @@ void apply_source(int timestep, int nx, int ny, const parameters_t param, all_da
         
         case 2: {  // Central point source
             SET(all_data->eta, nx / 2, ny / 2, source);
+            break;
+        }
+
+        case 3: {  // Multiple point sources with phase shifts
+            const int num_sources = 3;
+            int source_positions[3][2] = {
+                {nx/4, ny/4},
+                {nx/2, ny/2},
+                {3*nx/4, 3*ny/4}
+            };
+            double phase_shifts[3] = {0.0, 2.0*M_PI/3.0, 4.0*M_PI/3.0};
+            
+            // Note: pas besoin de parallélisation ici car seulement 3 itérations
+            for (int s = 0; s < num_sources; s++) {
+                int i = source_positions[s][0];
+                int j = source_positions[s][1];
+                double phase_shifted_source = A * sin(2.0 * M_PI * f * t + phase_shifts[s]) * envelope;
+                SET(all_data->eta, i, j, phase_shifted_source);
+            }
+            break;
+        }
+
+        case 4: {  // Moving source
+            double speed = 0.004;
+            int source_i = (int)(nx/4 + (nx/2) * sin(speed * t));
+            int source_j = (int)(ny/2 + (ny/4) * cos(speed * t));
+            
+            // Vérification que la source reste dans les limites du domaine
+            if (source_i >= 0 && source_i < nx && source_j >= 0 && source_j < ny) {
+                SET(all_data->eta, source_i, source_j, source);
+            }
             break;
         }
 

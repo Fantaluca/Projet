@@ -3,7 +3,8 @@ set -e
 
 # Path settings
 BIN_PATH="../../bin"
-INPUT_PATH="../../input_data/base_case"
+INPUT_PATH="../../input_data/base_case/"
+export SHALLOW_INPUT_DIR="$INPUT_PATH"
 
 # Architecture settings
 export OMP_NUM_THREADS=4
@@ -13,10 +14,9 @@ export NB_PROC=4
 cleanup() {
     pkill -9 mpirun || true
     pkill -9 orted || true  # Kill Open MPI daemon processes
-    sleep 2  # Attendre que tous les processus soient bien terminés
+    sleep 2 
 }
 
-# Nettoyer les processus existants avant de commencer
 cleanup
 
 # Create temporary user if it doesn't exist

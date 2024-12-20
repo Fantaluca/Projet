@@ -23,7 +23,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#define INPUT_DIR "../../input_data/base_case/"
+#define INPUT_DIR getenv("SHALLOW_INPUT_DIR")
 #define MAX_PATH_LENGTH 512
 
 /*===========================================================

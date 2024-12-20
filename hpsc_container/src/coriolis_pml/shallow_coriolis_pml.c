@@ -616,29 +616,28 @@ void update_eta(const parameters_t param,
     if (recv_up) free(recv_up);
 }
 
-static inline double pml_sigma(int i, int j, int nx_glob, int ny_glob, int pml_width) {
-    double sigma = 0.0;
-    double sigma_max = 50.0;  // Increased for stronger absorption
+double calculate_pml_damping(int global_i, int global_j, int nx_glob, int ny_glob, int pml_width, double sigma_max) {
+        // Calculate distances from boundaries
     
-    if (i < pml_width) {
-        double x = (double)(pml_width - i) / pml_width;
-        sigma += sigma_max * x * x * x;
+        double dist_x = fmin(global_i, nx_glob - 1 - global_i);
+        double dist_y = fmin(global_j, ny_glob - 1 - global_j);
+        
+        // Calculate damping only if in PML zone
+        double sigma_x = 0.0;
+        double sigma_y = 0.0;
+        
+        if (dist_x < pml_width) {
+            double x = (pml_width - dist_x) / pml_width;
+            sigma_x = sigma_max * (x*x*x);
+        }
+        if (dist_y < pml_width) {
+            double y = (pml_width - dist_y) / pml_width;
+            sigma_y = sigma_max * (y*y*y);
+        }
+        
+        // Return maximum damping between x and y components
+        return fmax(sigma_x, sigma_y);
     }
-    if (i >= nx_glob - pml_width) {
-        double x = (double)(i - (nx_glob - pml_width)) / pml_width;
-        sigma += sigma_max * x * x * x;
-    }
-    if (j < pml_width) {
-        double y = (double)(pml_width - j) / pml_width;
-        sigma += sigma_max * y * y * y;
-    }
-    if (j >= ny_glob - pml_width) {
-        double y = (double)(j - (ny_glob - pml_width)) / pml_width;
-        sigma += sigma_max * y * y * y;
-    }
-    
-    return sigma;
-}
 
 void update_velocities(const parameters_t param,
                       all_data_t *all_data,
@@ -653,9 +652,7 @@ void update_velocities(const parameters_t param,
 
     int nx = all_data->eta->nx;
     int ny = all_data->eta->ny;
-    double pml_L = 400.0;  
-    const int pml_width = pml_L/(fmin(param.dx,param.dy));  // Width of PML layer
-    
+
     // Calculate global dimensions
     double hx = all_data->h->nx * all_data->h->dx;
     double hy = all_data->h->ny * all_data->h->dy;
@@ -723,11 +720,18 @@ void update_velocities(const parameters_t param,
         MPI_Waitall(recv_count, request_recv, status);
     }
     
-    // Update velocities
+        // Update velocities
     double dx = param.dx;
     double dy = param.dy;
     double c1 = param.dt * param.g;
     double c2 = param.dt * param.gamma;
+    
+    int pml_width_x = (int)(0.08 * nx_glob);
+    int pml_width_y = (int)(0.08 * ny_glob);
+
+    // Use minimum of both for consistent corners, with a minimum size
+    int pml_width = fmin(pml_width_x, pml_width_y);
+    double sigma_max = 20.0 * (25.0/param.dx);
 
     // Update u (includes one extra point in x direction)
     #pragma omp parallel for 
@@ -775,12 +779,10 @@ void update_velocities(const parameters_t param,
             int global_i = START_I(gdata, topo->cart_rank) + i;
             int global_j = START_J(gdata, topo->cart_rank) + j;
 
-            // Apply PML only if in the PML zone of the global domain
-            if (global_i < pml_width || global_i >= nx_glob - pml_width ||
-                global_j < pml_width || global_j >= ny_glob - pml_width) {
-                double sigma = pml_sigma(global_i, global_j, nx_glob, ny_glob, pml_width);
-                new_u *= exp(-sigma * param.dt);
-            }
+            // Apply PML damping
+            double sigma = calculate_pml_damping(global_i, global_j, nx_glob, ny_glob, pml_width, sigma_max);
+            if (sigma > 0.0) new_u *= exp(-sigma * param.dt);
+            
             
             SET(all_data->u, i, j, new_u);
         }
@@ -828,24 +830,14 @@ void update_velocities(const parameters_t param,
                          c1 / dy * (eta_ij - eta_ijm1) - 
                          param.dt * param.f * u_avg;
             
-            
-
             // Calculate global coordinates
             int global_i = START_I(gdata, topo->cart_rank) + i;
             int global_j = START_J(gdata, topo->cart_rank) + j;
 
-            if (global_i < pml_width || global_i >= nx_glob - pml_width ||
-                global_j < pml_width || global_j >= ny_glob - pml_width) {
-                //printf("Position: global_i=%d, global_j=%d, nx_glob=%d, ny_glob=%d\n", 
-                //    global_i, global_j, nx_glob, ny_glob);
-                double sigma = pml_sigma(global_i, global_j, nx_glob, ny_glob, pml_width);
-                //printf("Sigma value: %f\n", sigma);
-                double factor = exp(-sigma * param.dt);
-                //printf("Attenuation factor: %f\n", factor);
-                //printf("Old value: %f, New value: %f\n", new_v, new_v * factor);
-                new_v *= factor;
-            }
-            
+            // Apply PML damping
+            double sigma = calculate_pml_damping(global_i, global_j, nx_glob, ny_glob, pml_width, sigma_max);
+            if (sigma > 0.0) new_v *= exp(-sigma * param.dt);
+    
             SET(all_data->v, i, j, new_v);
         }
     }

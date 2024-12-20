@@ -21,13 +21,13 @@ cleanup() {
 }
 
 cleanup
-mpicc -O3 -fopenmp -o "$BIN_PATH/shallow_omp_mpi" shallow_omp_mpi.c tools_omp_mpi.c main_omp_mpi.c -lm
+mpicc -O3 -fopenmp -o "$BIN_PATH/shallow_coriolis_pml" shallow_coriolis_pml.c tools_coriolis_pml.c main_coriolis_pml.c -lm
 
 # Check compilation
 if [ $? -eq 0 ]; then
     echo "Compilation succeed. Executiong OMP-MPI..."
     trap cleanup EXIT INT TERM
-    mpirun -n $NB_PROC "$BIN_PATH/shallow_omp_mpi ${INPUT_PATH}/param_simple.txt"
+    mpirun -n $NB_PROC "$BIN_PATH/shallow_coriolis_pml ${INPUT_PATH}/param_simple.txt"
 else
     echo "Compilation error."
     exit 1

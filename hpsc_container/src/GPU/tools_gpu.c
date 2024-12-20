@@ -169,9 +169,9 @@ int write_data(const data_t *data, const char *filename, int step)
 {
   char out[MAX_PATH_LENGTH];
   if(step < 0)
-    sprintf(out, "output/%s.dat", filename);
+    sprintf(out, "output/gpu_%s.dat", filename);
   else
-    sprintf(out, "output/%s_%d.dat", filename, step);
+    sprintf(out, "output/gpu_%s_%d.dat", filename, step);
   FILE *fp = fopen(out, "wb");
   if(!fp) {
     printf("Error: Could not open output data file '%s'\n", out);
@@ -206,9 +206,9 @@ int write_data_vtk(const data_t *data, const char *name,
 
   char out[MAX_PATH_LENGTH];
  if(step < 0)
-    sprintf(out, "../../output/%s.vti", filename);
+    sprintf(out, "../../output/gpu_%s.vti", filename);
   else
-    sprintf(out, "../../output/%s_%d.vti", filename, step);
+    sprintf(out, "../../output/gpu_%s_%d.vti", filename, step);
 
   FILE *fp = fopen(out, "wb");
   if(!fp) {
@@ -262,7 +262,7 @@ int write_manifest_vtk(const char *filename, double dt, int nt,
                        int sampling_rate)
 {
   char out[MAX_PATH_LENGTH];
-  sprintf(out, "../../output/%s.pvd", filename);
+  sprintf(out, "../../output/gpu_%s.pvd", filename);
 
    FILE *fp = fopen(out, "wb");
   if(!fp) {

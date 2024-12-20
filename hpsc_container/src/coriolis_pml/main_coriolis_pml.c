@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
 
     // Interpolate bathymetry
     interp_bathy(param, nx_glob, ny_glob, all_data, gdata, &topo);
-	  check_cfl(param, all_data, &topo);
+	check_cfl(param, all_data, &topo);
 
     // Loop over timestep
     double start = GET_TIME(); 
@@ -93,9 +93,7 @@ int main(int argc, char **argv) {
 			
 		}
 
-		//boundary_conditions(param, all_data, &topo);
 		apply_source(n, nx_glob, ny_glob, param, all_data, gdata, &topo);
-		
 		update_eta(param, all_data, gdata, &topo);
 		update_velocities(param, all_data, gdata, &topo);
 
@@ -103,11 +101,11 @@ int main(int argc, char **argv) {
 
     }
 
-  if (topo.rank ==0){
-  double time = GET_TIME() - start;
-    printf("\nDone: %g seconds (%g MUpdates/s)\n", time,
-           1e-6 * (double)nx_glob * (double)ny_glob * (double)nt / time);
-  }
+	if (topo.rank ==0){
+	double time = GET_TIME() - start;
+		printf("\nDone: %g seconds (%g MUpdates/s)\n", time,
+			1e-6 * (double)nx_glob * (double)ny_glob * (double)nt / time);
+	}
         
   // Clean up all variables
   MPI_Barrier(topo.cart_comm);

@@ -199,7 +199,7 @@ int init_data(data_t *data, int nx, int ny, double dx, double dy, double val) {
  */
 int write_data(const data_t *data, const char *filename, int step) {
     char out[MAX_PATH_LENGTH];
-    sprintf(out, "output/%s%s.dat", filename, (step < 0) ? "" : "_");
+    sprintf(out, "output/mpi_%s%s.dat", filename, (step < 0) ? "" : "_");
     if(step >= 0) sprintf(out + strlen(out), "%d", step);
     
     FILE *fp = fopen(out, "wb");
@@ -237,9 +237,10 @@ int write_data(const data_t *data, const char *filename, int step) {
 int write_data_vtk(const data_t *data, const char *name,
                    const char *filename, int step) {
     char out[MAX_PATH_LENGTH];
-    sprintf(out, "../../output/%s%s.vti", filename,
-            (step < 0) ? "" : "_");
-    if(step >= 0) sprintf(out + strlen(out), "%d", step);
+    sprintf(out, "../../output/mpi_%s", filename);
+    if (step >= 0) sprintf(out + strlen(out), "_%d", step);
+    strcat(out, ".vti");
+
 
     FILE *fp = fopen(out, "wb");
     if(!fp) {
@@ -292,7 +293,7 @@ int write_data_vtk(const data_t *data, const char *name,
 int write_manifest_vtk(const char *filename, double dt, int nt,
                        int sampling_rate) {
     char out[MAX_PATH_LENGTH];
-    sprintf(out, "../../output/%s.pvd", filename);
+    sprintf(out, "../../output/mpi_%s.pvd", filename);
 
     FILE *fp = fopen(out, "wb");
     if(!fp) {

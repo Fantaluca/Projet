@@ -3,7 +3,8 @@ set -e
 
 # Path settings
 BIN_PATH="../../bin"
-INPUT_PATH="../../input_data/base_case"
+INPUT_PATH="../../input_data/base_case/"
+export SHALLOW_INPUT_DIR="$INPUT_PATH"
 
 # OpenMP settings
 export OMP_NUM_THREADS=16

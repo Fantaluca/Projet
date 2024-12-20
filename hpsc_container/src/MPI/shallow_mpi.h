@@ -32,7 +32,7 @@
 /*===========================================================
  * CONSTANTS AND CONFIGURATION MACROS
  ===========================================================*/
-#define INPUT_DIR "../../input_data/base_case/"
+#define INPUT_DIR getenv("SHALLOW_INPUT_DIR")
 #define MAX_PATH_LENGTH 512
 
 #ifndef M_PI
