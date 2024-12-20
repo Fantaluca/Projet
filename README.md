@@ -19,6 +19,8 @@ This project implements shallow water simulations using various parallel computi
 
 ## Usage Instructions
 
+> **Important Note**: When running on the nic5 cluster, you must use the `nic5_` prefixed scripts (e.g., `nic5_omp.sh`, `nic5_gpu.sh`) instead of the standard setup scripts.
+
 1. Navigate to your chosen implementation directory:
    ```bash
    cd src/CHOSEN_TYPE
@@ -32,11 +34,15 @@ This project implements shallow water simulations using various parallel computi
 
 2. Run the setup script:
    ```bash
-   ./set_CHOSEN_TYPE.sh
+   ./set_CHOSEN_TYPE.sh     # Standard environment
+   # OR
+   ./nic5_CHOSEN_TYPE.sh    # On nic5 cluster
    ```
    For example, if using the OpenMP+MPI implementation:
    ```bash
-   ./set_omp_mpi.sh
+   ./set_omp_mpi.sh        # Standard environment
+   # OR
+   ./nic5_omp_mpi.sh       # On nic5 cluster
    ```
 
 ## Configuration
