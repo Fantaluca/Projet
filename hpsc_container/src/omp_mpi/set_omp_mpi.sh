@@ -35,7 +35,7 @@ mpicc -O3 -fopenmp -o ${BIN_PATH}/shallow_omp_mpi shallow_omp_mpi.c tools_omp_mp
 if [ $? -eq 0 ]; then
     # Utiliser trap pour nettoyer si le script est interrompu
     trap cleanup EXIT INT TERM
-    su $TMP_USER -c "mpirun -n $NB_PROC ${BIN_PATH}/shallow_omp_mpi ${INPUT_PATH}/param_simple.txt"
+    su $TMP_USER -c "mpirun -n $NB_PROC ${BIN_PATH}/shallow_omp_mpi param_simple.txt"
 else
     echo "Compilation error"
     exit 1

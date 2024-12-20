@@ -1,36 +1,44 @@
 #!/bin/bash
+#SBATCH --job-name="shallow_omp_mpi"
+#SBATCH --ntasks=4
+#SBATCH --cpus-per-task=4
+#SBATCH --time=00:10:00
+#SBATCH --output=shallow_omp_mpi_%j.out
+#SBATCH --error=shallow_omp_mpi_%j.err
+#SBATCH --chdir=/home/ulg/info0939/ademeure/High-Performance-Scientific-Computing/hpsc_container/src/omp_mpi
+#SBATCH --exclusive
 
 module load GCC
 module load OpenMPI
 
-export OMP_NUM_THREADS=10      
-NB_PROC=4                      
 
-BIN_PATH="../../bin"
-INPUT_PATH="../../input_data/base_case/"
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-10}
+NB_PROC=${SLURM_NTASKS:-4}
+
+
+
+# Path definition
+SCRIPT_DIR="$( pwd )"
+BIN_PATH="$SCRIPT_DIR/../../bin"
+INPUT_PATH="$SCRIPT_DIR/../../input_data/base_case/"
+OUTPUT_PATH="$SCRIPT_DIR/../../output"
+
 export SHALLOW_INPUT_DIR="$INPUT_PATH"
-OUTPUT_PATH="../../output"
+
+# Create directories
 mkdir -p "$BIN_PATH"
 mkdir -p "$OUTPUT_PATH"
 
-# Ensure all processerus are killed
-cleanup() {
-    pkill -9 mpirun || true
-    pkill -9 orted || true  # Kill Open MPI daemon processes
-    sleep 2
-}
+# Compilation
+echo "Compiling..."
+mpicc -O3 -fopenmp -o "$BIN_PATH/shallow_omp_mpi" "$SCRIPT_DIR/shallow_omp_mpi.c" "$SCRIPT_DIR/tools_omp_mpi.c" "$SCRIPT_DIR/main_omp_mpi.c" -lm
 
-cleanup
-mpicc -O3 -fopenmp -o "$BIN_PATH/shallow_omp_mpi" shallow_omp_mpi.c tools_omp_mpi.c main_omp_mpi.c -lm
-
-# Check compilation
+# Run
 if [ $? -eq 0 ]; then
-    echo "Compilation succeed. Executiong OMP-MPI..."
-    trap cleanup EXIT INT TERM
-    mpirun -n $NB_PROC "$BIN_PATH/shallow_omp_mpi ${INPUT_PATH}/param_simple.txt"
+    echo "Compilation succeed. Exec OMP-MPI..."
+    echo "nb of process MPI : ${NB_PROC}"
+    mpirun -n ${NB_PROC} "$BIN_PATH/shallow_omp_mpi" "param_simple.txt"
 else
-    echo "Compilation error."
+    echo "Error during compilation"
     exit 1
 fi
-
-cleanup
