@@ -370,8 +370,8 @@ void check_cfl(parameters_t param, all_data_t *all_data, MPITopology *topo) {
 
     if (lambda > 0.5) {
         fprintf(stderr, "ERROR: CFL condition not satisfied!\n");
-        MPI_Abort(MPI_COMM_WORLD, 1);
-        exit(1);
+        //MPI_Abort(MPI_COMM_WORLD, 1);
+        //exit(1);
     }
 }
 

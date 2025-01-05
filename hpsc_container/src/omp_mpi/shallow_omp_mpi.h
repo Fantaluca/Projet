@@ -15,6 +15,11 @@
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <errno.h>
+
 
 // Parallel Computing Libraries
 #include <mpi.h>
@@ -186,6 +191,7 @@ void gather_and_assemble_data(const parameters_t param,
                                int timestep);
 
 // Additional Tool Functions
+int cleanup_output_directory();
 int read_parameters(parameters_t *param, const char *filename);
 void print_parameters(const parameters_t *param);
 int read_data(data_t *data, const char *filename);

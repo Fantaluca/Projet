@@ -80,7 +80,7 @@ void update_eta(int nx, int ny, const parameters_t param, all_data_t *all_data) 
     double* u_gpu = all_data->u->values;
     double* v_gpu = all_data->v->values;
 
-    #pragma omp target teams distribute parallel for collapse(2) \
+    #pragma omp target teams distribute parallel for \
         map(tofrom: eta_gpu[0:nx*ny]) \
         map(to: h_interp_gpu[0:nx*ny], u_gpu[0:(nx+1)*ny], v_gpu[0:nx*(ny+1)])
     for(int i = 0; i < nx; i++) {
@@ -116,7 +116,7 @@ void update_velocities(int nx, int ny, const parameters_t param, all_data_t *all
     double* eta_gpu = all_data->eta->values;
 
     // For u: grid (nx+1) x ny
-    #pragma omp target teams distribute parallel for collapse(2) \
+    #pragma omp target teams distribute parallel for \
         map(tofrom: u_gpu[0:(nx+1)*ny]) \
         map(to: eta_gpu[0:nx*ny])
     for(int i = 0; i < nx + 1; i++) {
@@ -147,7 +147,7 @@ void update_velocities(int nx, int ny, const parameters_t param, all_data_t *all
     }
 
     // For v: grid nx x (ny+1)
-    #pragma omp target teams distribute parallel for collapse(2) \
+    #pragma omp target teams distribute parallel for \
         map(tofrom: v_gpu[0:nx*(ny+1)]) \
         map(to: eta_gpu[0:nx*ny])
     for(int i = 0; i < nx; i++) {

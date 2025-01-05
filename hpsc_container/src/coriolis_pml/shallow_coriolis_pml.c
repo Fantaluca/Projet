@@ -773,7 +773,7 @@ void update_velocities(const parameters_t param,
             // Update velocity with Coriolis term
             double new_u = (1.0 - c2) * u_ij - 
                          c1 / dx * (eta_ij - eta_im1j) + 
-                         param.dt * param.f * v_avg;
+                         param.dt * F_CORIOLIS * v_avg;
 
             // Calculate global coordinates
             int global_i = START_I(gdata, topo->cart_rank) + i;
@@ -828,7 +828,7 @@ void update_velocities(const parameters_t param,
             // Update velocity with Coriolis term
             double new_v = (1.0 - c2) * v_ij - 
                          c1 / dy * (eta_ij - eta_ijm1) - 
-                         param.dt * param.f * u_avg;
+                         param.dt * F_CORIOLIS * u_avg;
             
             // Calculate global coordinates
             int global_i = START_I(gdata, topo->cart_rank) + i;

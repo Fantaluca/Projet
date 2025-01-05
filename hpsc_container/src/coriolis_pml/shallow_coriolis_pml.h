@@ -51,7 +51,7 @@
 #define START_J(gdata, rank) ((gdata)->rank_glob[rank][1].start)
 #define END_J(gdata, rank)   ((gdata)->rank_glob[rank][1].end)
 
-#define F_CORIOLIS 2*7.2921e-5
+#define F_CORIOLIS 2*7.2921e-2
 
 /*===========================================================
  * ENUMERATION AND TYPE DEFINITIONS

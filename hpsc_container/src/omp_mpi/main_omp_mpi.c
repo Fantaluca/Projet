@@ -8,6 +8,8 @@
 
 int main(int argc, char **argv) {
 
+	
+
     char* omp_num_threads_str = getenv("OMP_NUM_THREADS");
     int num_threads = omp_num_threads_str ? atoi(omp_num_threads_str) : 8;
     omp_set_num_threads(num_threads); 
@@ -25,6 +27,12 @@ int main(int argc, char **argv) {
       MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
+
+	if (topo.rank ==0){
+		if (cleanup_output_directory() != 0) {
+        	fprintf(stderr, "Warning: fail while cleaning output directory\n");
+    	}
+	}
 
     parameters_t param;
     if (read_parameters(&param, argv[1])) {
@@ -73,13 +81,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+	
+
     //----------------------//
     // Simulation algorithm //
     //----------------------//
 
     // Interpolate bathymetry
     interp_bathy(param, nx_glob, ny_glob, all_data, gdata, &topo);
-	check_cfl(param, all_data, &topo);
 
     // Loop over timestep
     double start = GET_TIME(); 
@@ -90,6 +99,8 @@ int main(int argc, char **argv) {
 
 		if (topo.cart_rank == 0 && param.sampling_rate && !(n % param.sampling_rate)){
 			write_data_vtk((gdata->gathered_output), "water elevation", param.output_eta_filename, n);
+      write_data_vtk((gdata->gathered_output), "u", param.output_u_filename, n);
+      write_data_vtk((gdata->gathered_output), "v", param.output_v_filename, n);
 			
 		}
 

@@ -10,6 +10,48 @@
  * FILE I/O AND PARAMETERS FUNCTIONS
  ===========================================================*/
 
+int cleanup_output_directory() {
+    const char *output_dir = "../../output";
+    DIR *dir;
+    struct dirent *entry;
+    char filepath[PATH_MAX];
+    int had_error = 0;
+    
+    dir = opendir(output_dir);
+    if (dir == NULL) {
+        if (errno == ENOENT) {
+            return 0;
+        }
+        fprintf(stderr, "Cannot open folder %s: %s\n", 
+                output_dir, strerror(errno));
+        return 1;
+    }
+    
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        
+        snprintf(filepath, PATH_MAX, "%s/%s", output_dir, entry->d_name);
+        
+        if (unlink(filepath) != 0) {
+            if (errno != ENOENT) {  // Ignorer l'erreur si le fichier n'existe pas
+                fprintf(stderr, "Suppression error  %s: %s\n", 
+                        filepath, strerror(errno));
+                had_error = 1;
+            }
+        }
+    }
+    
+    closedir(dir);
+    
+    if (!had_error) {
+        printf("Output folder correctly cleaned\n");
+    }
+    
+    return had_error;
+}
+
 /**
  * Reads simulation parameters from configuration file
  * 
