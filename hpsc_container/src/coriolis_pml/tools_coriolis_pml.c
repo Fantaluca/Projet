@@ -70,7 +70,7 @@ int read_parameters(parameters_t *param, const char *filename) {
                 }
                 char *dest = (param_count == 9) ? param->output_eta_filename :
                             (param_count == 10) ? param->output_u_filename :
-                                                param->output_v_filename;
+                                                  param->output_v_filename;
                 strncpy(dest, token, 255);
                 dest[255] = '\0';
                 break;

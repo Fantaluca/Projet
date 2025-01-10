@@ -1,10 +1,10 @@
 # Configuration spatiale
-29    # dx (m)
-29    # dy (m)
+5    # dx (m)
+5    # dy (m)
 
 # Configuration temporelle
-1 # dt (s)
-30000  # max_t (s)
+0.05 # dt (s)
+1000  # max_t (s)
 
 # Paramètres physiques
 9.81    # g (m/s²)

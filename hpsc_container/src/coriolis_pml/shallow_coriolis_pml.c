@@ -19,7 +19,7 @@
  * - (i_rank, j_rank) : Local subdomain coordinates
  * 
  * Example grid decomposition (3x3):
- *     0    4    8   12
+ *      0    4    8   12
  *   0  +----+----+----+
  *      |    |    |    |
  *      | P0 | P1 | P2 |
@@ -864,22 +864,24 @@ void update_velocities(const parameters_t param,
  * DATA COLLECTION AND OUTPUT FUNCTIONS
  ===========================================================*/
 void gather_and_assemble_data(const parameters_t param,
-                             all_data_t *all_data,
-                             gather_data_t *gdata,
-                             MPITopology *topo,
-                             int nx_glob, int ny_glob,
-                             int timestep) {
+                              all_data_t *all_data,
+                              gather_data_t *gdata,
+                              MPITopology *topo,
+                              int nx_glob, int ny_glob,
+                              int timestep) {
     
     data_t *output_data[] = {all_data->eta, all_data->u, all_data->v};
     double *receive_buffers[] = {gdata->receive_data_eta,
-                               gdata->receive_data_u,
-                               gdata->receive_data_v};
+                                 gdata->receive_data_u,
+                                 gdata->receive_data_v};
+                                 
     int *recv_sizes[] = {gdata->recv_size_eta,
-                        gdata->recv_size_u,
-                        gdata->recv_size_v};
+                         gdata->recv_size_u,
+                         gdata->recv_size_v};
+
     int *displacements[] = {gdata->displacements_eta,
-                          gdata->displacements_u,
-                          gdata->displacements_v};
+                            gdata->displacements_u,
+                            gdata->displacements_v};
 
     // Gather and assemble each field
     for (int field = 0; field < 3; field++) {
